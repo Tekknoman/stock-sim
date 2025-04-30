@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Stock, Position } from '../../types';
 import { AreaChart, Area, ReferenceLine, ResponsiveContainer, Tooltip } from 'recharts';
 import usePositionStore from '../../store/positionStore';
+import useStockStore from '../../store/stockStore';
 import useUserStore from '../../store/userStore';
+import socketService from '../../services/socket';
 import UserChip from '../users/UserChip';
 
 interface StockCardProps {
@@ -17,21 +19,102 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   const [priceChange, setPriceChange] = useState({ value: 0, percent: 0 });
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPositionsOnGraph, setShowPositionsOnGraph] = useState(false);
-  const [chartData, setChartData] = useState<{ value: number }[]>([]);
+  const [chartData, setChartData] = useState<{ value: number, timestamp: string }[]>([]);
   const [sellingPosition, setSellingPosition] = useState<Position | null>(null);
   const [sellConfirmOpen, setSellConfirmOpen] = useState(false);
   const [sellSuccess, setSellSuccess] = useState<string | null>(null);
+  const [isChartLoading, setIsChartLoading] = useState(true);
   
   const { getPositionsForStock, closePosition } = usePositionStore();
+  const { getStockHistory } = useStockStore();
   const { selectedUser, userPositions: allUserPositions } = useUserStore();
 
-  // Simulate chart data (in real app, this would come from the API)
+  // Load real chart data instead of simulated data
   useEffect(() => {
-    const simulatedData = Array.from({ length: 20 }, () => ({
-      value: stock.base_value * (1 + (Math.random() * 0.4 - 0.2))
-    }));
-    setChartData(simulatedData);
-  }, [stock.base_value]);
+    const loadChartData = async () => {
+      setIsChartLoading(true);
+      try {
+        // Get the last 20 price points
+        const history = await getStockHistory(stock.id, 20);
+        if (history && history.length > 0) {
+          const formattedData = history
+            .map(point => ({
+              value: point.price,
+              timestamp: new Date(point.timestamp).toISOString(),
+              formattedTime: new Date(point.timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            }))
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          
+          setChartData(formattedData);
+        } else {
+          // Fallback to simulated data if API returns empty
+          const simulatedData = Array.from({ length: 20 }, (_, i) => {
+            const date = new Date();
+            date.setMinutes(date.getMinutes() - (20 - i));
+            return {
+              value: stock.base_value * (1 + (Math.random() * 0.4 - 0.2)),
+              timestamp: date.toISOString(),
+              formattedTime: date.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            };
+          });
+          setChartData(simulatedData);
+        }
+      } catch (error) {
+        console.error('Error loading chart data:', error);
+        // Fallback to simulated data on error
+        const simulatedData = Array.from({ length: 20 }, () => ({
+          value: stock.base_value * (1 + (Math.random() * 0.4 - 0.2)),
+          timestamp: new Date().toISOString(),
+          formattedTime: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        }));
+        setChartData(simulatedData);
+      } finally {
+        setIsChartLoading(false);
+      }
+    };
+
+    loadChartData();
+
+    // Subscribe to real-time updates
+    socketService.connect();
+    const handlePriceUpdate = (updates: any[]) => {
+      const stockUpdate = updates.find(update => update.id === stock.id);
+      if (stockUpdate) {
+        // Update chart with new price point
+        const now = new Date();
+        setChartData(prev => {
+          // Add new price point
+          const newPoint = {
+            value: stockUpdate.current_price,
+            timestamp: now.toISOString(),
+            formattedTime: now.toLocaleTimeString([], {
+              hour: '2-digit', 
+              minute: '2-digit'
+            })
+          };
+          
+          // Keep only the last 20 points
+          const updated = [...prev, newPoint].slice(-20);
+          return updated;
+        });
+      }
+    };
+    socketService.onPriceUpdate(handlePriceUpdate);
+
+    // Cleanup
+    return () => {
+      socketService.removeListener('prices:update', handlePriceUpdate);
+    };
+  }, [stock.id, stock.base_value, getStockHistory]);
 
   // Calculate price change
   useEffect(() => {
@@ -47,6 +130,13 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
       setStockPositions(positions);
     };
     loadPositions();
+
+    // Subscribe to position changes
+    const positionUpdateInterval = setInterval(loadPositions, 10000);
+    
+    return () => {
+      clearInterval(positionUpdateInterval);
+    };
   }, [stock.id, getPositionsForStock]);
 
   // Filter user positions for this stock
@@ -106,6 +196,19 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
       await closePosition(sellingPosition.id);
       const profit = (stock.current_price - sellingPosition.open_price) * sellingPosition.amount;
       setSellSuccess(`Sold ${sellingPosition.amount} shares for ${profit.toFixed(2)} profit`);
+      
+      // Force refresh positions after selling
+      const updatedPositions = await getPositionsForStock(stock.id);
+      setStockPositions(updatedPositions);
+      
+      // Update user positions
+      if (selectedUser) {
+        const positions = allUserPositions.filter(
+          p => p.stock_id === stock.id && p.is_open && p.id !== sellingPosition.id
+        );
+        setUserPositions(positions);
+      }
+      
       setTimeout(() => setSellSuccess(null), 3000);
     } catch (err) {
       console.error('Error selling position:', err);
@@ -126,6 +229,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
       return (
         <div className="bg-dark-400 p-2 border border-dark-100 rounded shadow-md">
           <p className="text-xs">${payload[0].value.toFixed(2)}</p>
+          <p className="text-xs text-gray-400">{payload[0].payload.formattedTime}</p>
         </div>
       );
     }
@@ -231,32 +335,38 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
       
       <div className="mini-chart h-24 mt-3">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
-            <Tooltip content={<CustomTooltip />} />
-            <Area 
-              type="monotone" 
-              dataKey="value" 
-              stroke={priceChange.percent >= 0 ? '#10b981' : '#ef4444'} 
-              fill={priceChange.percent >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'} 
-              strokeWidth={1.5}
-            />
-            
-            {/* Show user position values on graph if toggle is active */}
-            {showPositionsOnGraph && userPositions.map((position) => (
-              <ReferenceLine 
-                key={position.id}
-                y={position.open_price} 
-                stroke="#60a5fa" 
-                strokeDasharray="3 3" 
-                label={{ 
-                  value: `${position.amount} @ $${position.open_price.toFixed(2)}`,
-                  position: 'insideBottomRight',
-                  fill: '#60a5fa',
-                  fontSize: 10
-                }} 
+          {isChartLoading ? (
+            <div className="flex justify-center items-center h-full w-full bg-dark-400/50 rounded">
+              <div className="text-xs text-gray-300">Loading chart...</div>
+            </div>
+          ) : (
+            <AreaChart data={chartData}>
+              <Tooltip content={<CustomTooltip />} />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke={priceChange.percent >= 0 ? '#10b981' : '#ef4444'} 
+                fill={priceChange.percent >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'} 
+                strokeWidth={1.5}
               />
-            ))}
-          </AreaChart>
+              
+              {/* Show user position values on graph if toggle is active */}
+              {showPositionsOnGraph && userPositions.map((position) => (
+                <ReferenceLine 
+                  key={position.id}
+                  y={position.open_price} 
+                  stroke="#60a5fa" 
+                  strokeDasharray="3 3" 
+                  label={{ 
+                    value: `${position.amount} @ $${position.open_price.toFixed(2)}`,
+                    position: 'insideBottomRight',
+                    fill: '#60a5fa',
+                    fontSize: 10
+                  }} 
+                />
+              ))}
+            </AreaChart>
+          )}
         </ResponsiveContainer>
       </div>
       
@@ -337,17 +447,17 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
             </div>
           )}
           
-          <div className="mt-2 flex justify-end">
+          {/* <div className="mt-2 flex justify-end">
             <button 
               className="px-3 py-1 bg-primary-700 text-sm rounded hover:bg-primary-600"
               onClick={(e) => {
                 e.stopPropagation();
-                handleClick();
+                onClick && onClick(stock.id);
               }}
             >
               View Details
             </button>
-          </div>
+          </div> */}
         </div>
       )}
     </div>

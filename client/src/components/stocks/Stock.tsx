@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   LineChart, 
   Line, 
@@ -11,41 +11,132 @@ import {
 } from 'recharts';
 import { Stock as StockType, PriceHistoryPoint } from '../../types';
 import useStockStore from '../../store/stockStore';
+import socketService from '../../services/socket';
 
 interface StockViewProps {
   stockId: number;
   onClose?: () => void;
 }
 
+type TimeSpan = '1m' | '5m' | '15m' | '30m' | '1h' | 'all';
+const interval = 1;
+
 const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
-  const { stocks } = useStockStore();
+  const { stocks, getStockHistory } = useStockStore();
   const stock = stocks.find(s => s.id === stockId);
-  const { getStockHistory } = useStockStore();
   
   const [priceHistory, setPriceHistory] = useState<PriceHistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeSpan, setTimeSpan] = useState<TimeSpan>('1h');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Time span conversion to limit parameter
+  const timeSpanToLimit: Record<TimeSpan, number> = {
+    '1m':  1 * (60/interval),
+    '5m':  5 * (60/interval),
+    '15m':  15 * (60/interval),
+    '30m':  30 * (60/interval),
+    '1h': 60*(60/interval),
+    'all': 0 // All history
+  };
+
+  // Format timestamps based on selected time span
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const options: Intl.DateTimeFormatOptions = {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    };
+    return date.toLocaleString('en-US', options);
+  };
 
   // Fetch price history for the stock
-  useEffect(() => {
-    const fetchHistory = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const history = await getStockHistory(stockId, 100);
-        setPriceHistory(history);
-      } catch (err) {
-        console.error('Error fetching stock history:', err);
-        setError('Failed to load price history');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchHistory = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const limit = timeSpanToLimit[timeSpan];
+      const history = await getStockHistory(stockId, limit);
+      setPriceHistory(history);
+    } catch (err) {
+      console.error('Error fetching stock history:', err);
+      setError('Failed to load price history');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Initial fetch and timespan change
+  useEffect(() => {
     if (stockId) {
       fetchHistory();
     }
-  }, [stockId, getStockHistory]);
+  }, [stockId, timeSpan]);
+
+  // Setup real-time updates through websocket
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    socketService.connect();
+    
+    // Set up a real-time listener for price updates
+    const handlePriceUpdate = (updates: any[]) => {
+      const stockUpdate = updates.find(update => update.id === stockId);
+      if (stockUpdate && stock) {
+        // When price updates, fetch latest history
+        fetchHistory();
+      }
+    };
+
+    socketService.onPriceUpdate(handlePriceUpdate);
+    
+    // Clean up
+    return () => {
+      socketService.removeListener('prices:update', handlePriceUpdate);
+    };
+  }, [stockId, autoRefresh, stock]);
+
+  // Calculate domain for X-axis based on the timespan state
+  const calculateCurrentDomain = () => {
+    if (chartData.length === 0) return ['auto', 'auto'];
+    // Calculate time range based on selected timespan
+    const now = new Date();
+    let minDate: Date;
+    
+    // Set min date based on timespan
+    switch (timeSpan) {
+      case '1m':
+        minDate = new Date(now.getTime() - 1000);
+        break;
+      case '5m':
+        minDate = new Date(now.getTime() - 5 * 1000);
+        break;
+      case '15m':
+        minDate = new Date(now.getTime() - 15 * 1000);
+        break;
+      case '30m':
+        minDate = new Date(now.getTime() - 30 *1000);
+        break;
+      case '1h':
+        minDate = new Date(now.getTime() - 60 * 1000);
+        break;
+      case 'all':
+        // For 'all', use the data's min/max
+        const minTimestamp = chartData[0]?.timestamp || 'auto';
+        const maxTimestamp = chartData[chartData.length - 1]?.timestamp || 'auto';
+        return [minTimestamp, maxTimestamp];
+    }
+
+    if (!minDate || !now) return ['auto', 'auto'];
+    
+    // Format timestamps for domain
+    const minTimestamp = formatTimestamp(minDate.toString());
+    const maxTimestamp = formatTimestamp(now.toString());
+    
+    return [minTimestamp, maxTimestamp];
+  }
 
   if (!stock) {
     return (
@@ -63,9 +154,11 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
 
   // Transform data for chart
   const chartData = priceHistory.map((point) => ({
-    timestamp: new Date(point.timestamp).toLocaleTimeString(),
-    price: point.price
-  })).reverse();
+    timestamp: formatTimestamp(point.timestamp),
+    price: point.price,
+    rawTimestamp: new Date(point.timestamp).getTime() // For sorting
+  })).sort((a, b) => a.rawTimestamp - b.rawTimestamp); // Ensure chronological order
+
 
   return (
     <div className="bg-dark-300 p-6 rounded-lg">
@@ -101,17 +194,57 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
       </div>
 
       <div className="mb-6">
-        <div className="flex justify-between text-sm text-gray-400 mb-2">
-          <div>Volatility: {stock.volatility}</div>
-          <div>Base value: ${stock.base_value.toFixed(2)}</div>
+        <div className="flex justify-between items-center text-sm text-gray-400 mb-2">
+          <div className="flex items-center space-x-3">
+            <div>Volatility: {stock.volatility}</div>
+            <div>Base value: ${stock.base_value.toFixed(2)}</div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              className={`px-2 py-1 text-xs rounded ${autoRefresh ? 'bg-green-800/50 text-green-200' : 'bg-dark-100'}`}
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              title={autoRefresh ? 'Disable auto updates' : 'Enable auto updates'}
+            >
+              {autoRefresh ? 'Auto-Refresh On' : 'Auto-Refresh Off'}
+            </button>
+            <button
+              className="px-2 py-1 text-xs bg-dark-100 hover:bg-dark-200 rounded"
+              onClick={fetchHistory}
+              title="Manually refresh data"
+            >
+              ↻
+            </button>
+          </div>
         </div>
         
-        <div className="h-80 bg-dark-400 rounded-lg p-4">
-          {loading ? (
-            <div className="h-full flex justify-center items-center">
-              <div className="animate-pulse text-primary-400">Loading chart data...</div>
+        {/* Time span selector */}
+        <div className="flex mb-4 bg-dark-400 rounded-t-lg p-2 space-x-1">
+          {(Object.keys(timeSpanToLimit) as TimeSpan[]).map((span) => (
+            <button
+              key={span}
+              className={`px-3 py-1 text-sm rounded ${timeSpan === span ? 'bg-primary-600 text-white' : 'bg-dark-300 hover:bg-dark-200'}`}
+              onClick={() => setTimeSpan(span)}
+            >
+              {span === 'all' ? 'All' : span}
+            </button>
+          ))}
+        </div>
+        
+        <div className="h-80 bg-dark-400 rounded-b-lg p-4 relative">
+          {loading && (
+            <div className="absolute top-2 right-2 z-10">
+              <div className="flex items-center bg-dark-500/70 px-2 py-1 rounded-full">
+                <svg className="animate-spin h-4 w-4 text-primary-400 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-xs text-primary-300">Updating</span>
+              </div>
             </div>
-          ) : error ? (
+          )}
+          
+          {error ? (
             <div className="h-full flex justify-center items-center text-red-400">
               {error}
             </div>
@@ -127,6 +260,7 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
                   stroke="#9CA3AF" 
                   tick={{ fontSize: 12 }}
                   tickLine={{ stroke: '#4B5563' }}
+                  domain={calculateCurrentDomain()}
                 />
                 <YAxis 
                   stroke="#9CA3AF"
@@ -140,6 +274,7 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
                     borderColor: '#374151',
                     color: 'white'
                   }} 
+                  formatter={(value: any) => [`$${value}`, 'Price']}
                 />
                 <Legend />
                 <Line 
@@ -147,8 +282,9 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
                   dataKey="price" 
                   stroke={stock.color || '#0EA5E9'} 
                   strokeWidth={2}
-                  dot={false}
+                  dot={chartData.length < 30}
                   activeDot={{ r: 8 }}
+                  animationDuration={300}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -207,6 +343,10 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
           <div className="mt-4 pt-4 border-t border-dark-300">
             <div className="text-sm text-gray-400">
               Created on: {new Date(stock.created_at).toLocaleDateString()}
+            </div>
+            <div className="text-sm mt-1 text-gray-400">
+              Data points: {priceHistory.length} 
+              {timeSpan !== 'all' && ` (last ${timeSpan})`}
             </div>
           </div>
         </div>

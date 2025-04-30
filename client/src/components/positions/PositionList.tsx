@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Position } from '../../types';
 import usePositionStore from '../../store/positionStore';
 import useUserStore from '../../store/userStore';
 import useStockStore from '../../store/stockStore';
+import socketService from '../../services/socket';
 
 interface PositionListProps {
   userId?: number;
@@ -11,18 +12,45 @@ interface PositionListProps {
 }
 
 const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, onSellPosition }) => {
-  const { userPositions } = useUserStore();
+  const { userPositions, fetchUserPositions } = useUserStore();
   const { stocks } = useStockStore();
   const { closePosition } = usePositionStore();
   const [closingPositionId, setClosingPositionId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   // Filter positions based on props
   const positions = userPositions.filter(pos => {
     if (onlyOpen && !pos.is_open) return false;
     return true;
   });
+
+  // Set up real-time updates
+  useEffect(() => {
+    socketService.connect();
+    
+    // Update positions when prices change
+    const handlePriceUpdate = () => {
+      if (!userId) return;
+      fetchUserPositions(userId);
+      setLastUpdate(new Date());
+    };
+
+    socketService.onPriceUpdate(handlePriceUpdate);
+    
+    // Set up periodic refresh (every 30 seconds)
+    const refreshInterval = setInterval(() => {
+      if (!userId) return;
+      fetchUserPositions(userId);
+      setLastUpdate(new Date());
+    }, 30000);
+    
+    return () => {
+      socketService.removeListener('prices:update', handlePriceUpdate);
+      clearInterval(refreshInterval);
+    };
+  }, [fetchUserPositions]);
 
   const handleClosePosition = async (position: Position) => {
     if (!position.is_open) return;
@@ -40,6 +68,9 @@ const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, on
       
       setSuccess(`Successfully sold ${position.amount} shares of ${position.stock_name}`);
       
+      // Force refresh the position list
+      userId && await fetchUserPositions(userId);
+
       // Call callback if provided
       if (onSellPosition) {
         onSellPosition(position, currentPrice);
@@ -73,6 +104,26 @@ const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, on
           {success}
         </div>
       )}
+
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-lg font-medium">Open Positions</h3>
+        <div className="flex items-center">
+          <span className="text-xs text-gray-400 mr-2">
+            Last updated: {lastUpdate.toLocaleTimeString()}
+          </span>
+          <button 
+            onClick={() => {
+              if (!userId) return;
+              fetchUserPositions(userId);
+              setLastUpdate(new Date());
+            }}
+            className="text-xs bg-dark-100 hover:bg-dark-200 px-2 py-1 rounded"
+            title="Refresh positions"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full">
