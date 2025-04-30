@@ -100,6 +100,22 @@ class Position {
       WHERE stock_id = ? AND is_open = 1
     `).get(stockId);
     }
+    
+    // Delete all positions for a stock
+    static deleteByStockId(stockId) {
+        const stmt = db.prepare(`
+      DELETE FROM positions WHERE stock_id = ?
+    `);
+        return stmt.run(stockId);
+    }
+    
+    // Delete all positions for a user
+    static deleteByUserId(userId) {
+        const stmt = db.prepare(`
+      DELETE FROM positions WHERE user_id = ?
+    `);
+        return stmt.run(userId);
+    }
 }
 
 module.exports = Position;

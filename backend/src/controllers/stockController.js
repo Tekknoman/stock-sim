@@ -1,5 +1,6 @@
 const Stock = require('../models/Stock');
 const Position = require('../models/Position');
+const db = require('../utils/db');
 
 // Get all stocks
 exports.getAllStocks = (req, res) => {
@@ -87,8 +88,19 @@ exports.deleteStock = (req, res) => {
             return res.status(404).json({ error: 'Stock not found' });
         }
 
+        // First, delete all positions related to this stock
+        Position.deleteByStockId(id);
+        
+        // Then delete the stock history
+        db.prepare('DELETE FROM stock_history WHERE stock_id = ?').run(id);
+        
+        // Finally, delete the stock itself
         Stock.delete(id);
-        res.json({ message: 'Stock deleted successfully' });
+        
+        res.json({ 
+            message: 'Stock deleted successfully',
+            details: 'All related positions and history have been removed.'
+        });
     } catch (error) {
         console.error('Error deleting stock:', error);
         res.status(500).json({ error: 'Failed to delete stock' });
