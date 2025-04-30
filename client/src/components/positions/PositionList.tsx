@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Position, User } from '../../types';
+import { Position } from '../../types';
 import usePositionStore from '../../store/positionStore';
 import useUserStore from '../../store/userStore';
+import useStockStore from '../../store/stockStore';
 
 interface PositionListProps {
   userId?: number;
   onlyOpen?: boolean;
+  onSellPosition?: (position: Position, price: number) => void;
 }
 
-const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true }) => {
+const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, onSellPosition }) => {
   const { userPositions } = useUserStore();
+  const { stocks } = useStockStore();
   const { closePosition } = usePositionStore();
   const [closingPositionId, setClosingPositionId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,17 @@ const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true }) 
 
     try {
       await closePosition(position.id);
+      
+      // Get current price from stocks
+      const stock = stocks.find(s => s.id === position.stock_id);
+      const currentPrice = stock?.current_price || position.close_price || 0;
+      
       setSuccess(`Successfully sold ${position.amount} shares of ${position.stock_name}`);
+      
+      // Call callback if provided
+      if (onSellPosition) {
+        onSellPosition(position, currentPrice);
+      }
     } catch (err) {
       console.error('Error closing position:', err);
       setError('Failed to close position');

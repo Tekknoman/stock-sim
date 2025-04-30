@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Stock, User } from '../../types';
+import { Stock, User, Position } from '../../types';
 import useStockStore from '../../store/stockStore';
 import useUserStore from '../../store/userStore';
 import usePositionStore from '../../store/positionStore';
 
 interface PositionFormProps {
-  onComplete?: () => void;
+  onComplete?: (position: Position) => void;
 }
 
 const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
@@ -20,14 +20,21 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
 
   // Get data from stores
   const { stocks, fetchStocks } = useStockStore();
-  const { users, fetchUsers, createUser } = useUserStore();
-  const { createPosition } = usePositionStore();
+  const { users, fetchUsers, createUser, selectedUser: currentUser } = useUserStore();
+  const { createPosition, getPositionById } = usePositionStore();
 
   // Load stocks and users
   useEffect(() => {
     fetchStocks();
     fetchUsers();
   }, [fetchStocks, fetchUsers]);
+  
+  // Set selected user to current user when it changes
+  useEffect(() => {
+    if (currentUser) {
+      setSelectedUser(currentUser);
+    }
+  }, [currentUser]);
 
   const handleCreatePosition = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +58,12 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
         setSuccess(`Successfully bought ${amount} shares of ${selectedStock.name}`);
         setAmount(1);
         
+        // Get full position details for callback
+        const position = await getPositionById(positionId);
+        
         // Call onComplete callback if provided
-        if (onComplete) {
-          onComplete();
+        if (onComplete && position) {
+          onComplete(position);
         }
       } else {
         setError('Failed to create position');
@@ -135,7 +145,7 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
         </div>
 
         {/* User Selection or Creation */}
-        {!isCreatingUser ? (
+        {!isCreatingUser && !currentUser ? (
           <div>
             <div className="flex justify-between mb-2">
               <label htmlFor="user" className="font-medium">Select Trader</label>
@@ -156,7 +166,7 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
                 const user = users.find(u => u.id === userId) || null;
                 setSelectedUser(user);
               }}
-              disabled={loading}
+              disabled={loading || !!currentUser}
             >
               <option value="">-- Select a Trader --</option>
               {users.map(user => (
@@ -166,7 +176,7 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
               ))}
             </select>
           </div>
-        ) : (
+        ) : isCreatingUser && !currentUser ? (
           <div>
             <div className="flex justify-between mb-2">
               <label htmlFor="newUser" className="font-medium">New Trader Name</label>
@@ -198,7 +208,7 @@ const PositionForm: React.FC<PositionFormProps> = ({ onComplete }) => {
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Amount */}
         <div>
