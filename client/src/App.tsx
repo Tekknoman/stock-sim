@@ -4,12 +4,15 @@ import StockGrid from './components/stocks/StockGrid';
 import SimulationControl from './components/layout/SimulationControl';
 import PositionForm from './components/positions/PositionForm';
 import PositionList from './components/positions/PositionList';
+import Admin from './components/layout/Admin';
+import Modal from './components/layout/Modal';
 import useUserStore from './store/userStore';
 import { User } from './types';
 
 function App() {
   const { users, selectedUser, selectUser, fetchUsers } = useUserStore();
   const [showTradingPanel, setShowTradingPanel] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
   
   // Ensure we have users loaded
   React.useEffect(() => {
@@ -47,6 +50,13 @@ function App() {
                 } transition-colors`}
               >
                 {showTradingPanel ? 'Hide Trading Panel' : 'Show Trading Panel'}
+              </button>
+              
+              <button 
+                onClick={() => setShowAdminModal(true)}
+                className="px-4 py-2 bg-amber-700 hover:bg-amber-600 rounded-md transition-colors"
+              >
+                Admin
               </button>
             </div>
           </div>
@@ -88,6 +98,18 @@ function App() {
           Virtual Trading Game &copy; {new Date().getFullYear()} - A stock market simulator for educational purposes
         </div>
       </footer>
+      
+      {/* Admin Modal */}
+      <Modal
+        isOpen={showAdminModal}
+        onClose={() => setShowAdminModal(false)}
+        maxWidth="max-w-7xl"
+      >
+        <Admin 
+          isOpen={showAdminModal} 
+          onClose={() => setShowAdminModal(false)} 
+        />
+      </Modal>
     </div>
   );
 }
