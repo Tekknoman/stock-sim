@@ -90,14 +90,14 @@ exports.deleteStock = (req, res) => {
 
         // First, delete all positions related to this stock
         Position.deleteByStockId(id);
-        
+
         // Then delete the stock history
         db.prepare('DELETE FROM stock_history WHERE stock_id = ?').run(id);
-        
+
         // Finally, delete the stock itself
         Stock.delete(id);
-        
-        res.json({ 
+
+        res.json({
             message: 'Stock deleted successfully',
             details: 'All related positions and history have been removed.'
         });

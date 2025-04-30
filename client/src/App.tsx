@@ -78,7 +78,7 @@ function App() {
         </div>
       </header>
       
-      <main className="container-fluid mx-auto py-4 px-4 flex-1 flex flex-col">
+      <main className="w-full mx-auto py-4 px-6 flex-1 flex flex-col">
         <div className="mb-4">
           <SimulationControl />
         </div>
