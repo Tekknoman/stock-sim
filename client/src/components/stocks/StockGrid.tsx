@@ -74,13 +74,15 @@ const StockGrid: React.FC = () => {
   
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {stocks.map(stock => (
-          <StockCard 
-            key={stock.id}
-            stock={stock}
-            onClick={handleStockClick}
-          />
+          <div key={stock.id} className="flex h-full">
+            <StockCard 
+              stock={stock}
+              onClick={handleStockClick}
+              className="w-full h-full"
+            />
+          </div>
         ))}
         
         {stocks.length === 0 && (

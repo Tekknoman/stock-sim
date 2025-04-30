@@ -7,9 +7,10 @@ import UserChip from '../users/UserChip';
 interface StockCardProps {
   stock: Stock;
   onClick?: (stockId: number) => void;
+  className?: string;
 }
 
-const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
+const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   const [stockPositions, setStockPositions] = useState<Position[]>([]);
   const [priceChange, setPriceChange] = useState({ value: 0, percent: 0 });
   const [isExpanded, setIsExpanded] = useState(false);
@@ -74,7 +75,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
 
   return (
     <div 
-      className="stock-card cursor-pointer" 
+      className={"stock-card cursor-pointer" + (className || '')} 
       style={{ borderLeft: `4px solid ${stock.color || '#6b7280'}` }}
       onClick={handleClick}
     >
