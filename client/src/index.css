@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-dark-400 text-gray-100;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.stock-card {
+  @apply bg-dark-300 rounded-lg p-4 transition-all duration-300;
+}
+
+.stock-card:hover {
+  @apply shadow-lg transform translate-y-[-2px];
+}
+
+.price-up {
+  @apply text-stock-up;
+}
+
+.price-down {
+  @apply text-stock-down;
+}
+
+.trend-icon {
+  @apply inline-block ml-1;
+}
+
+.user-icon {
+  @apply h-8 w-8 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold;
+}
+
+.mini-chart {
+  @apply h-16 w-full mt-2;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-dark-200;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-dark-100 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary-800;
+}
