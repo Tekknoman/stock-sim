@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Stock, Position } from "../../types";
 import {
   AreaChart,
@@ -25,108 +25,48 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   const [priceChange, setPriceChange] = useState({ value: 0, percent: 0 });
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPositionsOnGraph, setShowPositionsOnGraph] = useState(false);
-  const [chartData, setChartData] = useState<
-    { value: number; timestamp: string }[]
-  >([]);
   const [sellingPosition, setSellingPosition] = useState<Position | null>(null);
   const [sellConfirmOpen, setSellConfirmOpen] = useState(false);
   const [sellSuccess, setSellSuccess] = useState<string | null>(null);
-  const [isChartLoading, setIsChartLoading] = useState(true);
 
   const { getPositionsForStock, closePosition } = usePositionStore();
-  const { getStockHistory } = useStockStore();
+  const { getStockHistory, stockHistories, setupWebSocketListeners } =
+    useStockStore();
   const { selectedUser, userPositions: allUserPositions } = useUserStore();
 
-  // Load real chart data instead of simulated data
+  // Use the centralized stock history with timespan "5m" for the card
+  const timeSpan = "5m";
+
+  // Get stock history loading state from the store
+  const isChartLoading = useMemo(
+    () => stockHistories[stock.id]?.isLoading || false,
+    [stock.id, stockHistories]
+  );
+
+  // Get the history data with memoization
+  const priceHistory = useMemo(
+    () => stockHistories[stock.id]?.data || [],
+    [stock.id, stockHistories]
+  );
+
+  // Load chart data from central store instead of fetching directly
   useEffect(() => {
-    const loadChartData = async () => {
-      setIsChartLoading(true);
-      try {
-        // Get the last 20 price points TODO: add simulation speed into the calculation to get 1 minute worth of data
-        const history = await getStockHistory(stock.id, 60);
-        if (history && history.length > 0) {
-          const formattedData = history
-            .map((point) => ({
-              value: point.price,
-              timestamp: new Date(point.timestamp).toISOString(),
-              formattedTime: new Date(point.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            }))
-            .sort(
-              (a, b) =>
-                new Date(a.timestamp).getTime() -
-                new Date(b.timestamp).getTime()
-            );
+    // Get the history if we don't already have it
+    if (!stockHistories[stock.id]) {
+      getStockHistory(stock.id, timeSpan);
+    }
 
-          setChartData(formattedData);
-        } else {
-          // Fallback to simulated data if API returns empty
-          const simulatedData = Array.from({ length: 20 }, (_, i) => {
-            const date = new Date();
-            date.setMinutes(date.getMinutes() - (20 - i));
-            return {
-              value: stock.base_value * (1 + (Math.random() * 0.4 - 0.2)),
-              timestamp: date.toISOString(),
-              formattedTime: date.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            };
-          });
-          setChartData(simulatedData);
-        }
-      } catch (error) {
-        console.error("Error loading chart data:", error);
-        // Fallback to simulated data on error
-        const simulatedData = Array.from({ length: 20 }, () => ({
-          value: stock.base_value * (1 + (Math.random() * 0.4 - 0.2)),
-          timestamp: new Date().toISOString(),
-          formattedTime: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        }));
-        setChartData(simulatedData);
-      } finally {
-        setIsChartLoading(false);
-      }
-    };
+    // Set up WebSocket listener for real-time updates
+    const cleanup = setupWebSocketListeners();
 
-    loadChartData();
-
-    // Subscribe to real-time updates
-    socketService.connect();
-    const handlePriceUpdate = (updates: any[]) => {
-      const stockUpdate = updates.find((update) => update.id === stock.id);
-      if (stockUpdate) {
-        // Update chart with new price point
-        const now = new Date();
-        setChartData((prev) => {
-          // Add new price point
-          const newPoint = {
-            value: stockUpdate.current_price,
-            timestamp: now.toISOString(),
-            formattedTime: now.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          };
-
-          // Keep only the last 20 points
-          const updated = [...prev, newPoint].slice(-20);
-          return updated;
-        });
-      }
-    };
-    socketService.onPriceUpdate(handlePriceUpdate);
-
-    // Cleanup
-    return () => {
-      socketService.removeListener("prices:update", handlePriceUpdate);
-    };
-  }, [stock.id, stock.base_value, getStockHistory]);
+    return cleanup;
+  }, [
+    stock.id,
+    getStockHistory,
+    setupWebSocketListeners,
+    stockHistories,
+    timeSpan,
+  ]);
 
   // Calculate price change
   useEffect(() => {
@@ -239,6 +179,26 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
     setSellConfirmOpen(false);
     setSellingPosition(null);
   };
+
+  // Format the chart data from the history store
+  const chartData = useMemo(() => {
+    if (priceHistory.length === 0) return [];
+
+    return priceHistory
+      .map((point) => ({
+        value: point.price,
+        timestamp: point.timestamp,
+        formattedTime: new Date(point.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+  }, [priceHistory]);
 
   // Custom tooltip for the chart that shows position values
   const CustomTooltip = ({ active, payload }: any) => {
@@ -387,7 +347,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
             <div className="flex justify-center items-center h-full w-full bg-dark-400/50 rounded">
               <div className="text-xs text-gray-300">Loading chart...</div>
             </div>
-          ) : (
+          ) : chartData.length > 0 ? (
             <AreaChart data={chartData}>
               <Tooltip content={<CustomTooltip />} />
               <Area
@@ -421,6 +381,10 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
                   />
                 ))}
             </AreaChart>
+          ) : (
+            <div className="flex justify-center items-center h-full w-full bg-dark-400/50 rounded">
+              <div className="text-xs text-gray-300">No data available</div>
+            </div>
           )}
         </ResponsiveContainer>
       </div>
@@ -532,18 +496,6 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
               </div>
             </div>
           )}
-
-          {/* <div className="mt-2 flex justify-end">
-            <button 
-              className="px-3 py-1 bg-primary-700 text-sm rounded hover:bg-primary-600"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClick && onClick(stock.id);
-              }}
-            >
-              View Details
-            </button>
-          </div> */}
         </div>
       )}
     </div>

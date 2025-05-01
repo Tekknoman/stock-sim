@@ -58,6 +58,7 @@ export interface Position {
 export interface PriceHistoryPoint {
     price: number;
     timestamp: string;
+    stock_id?: number;
 }
 
 export interface SimulationStatus {

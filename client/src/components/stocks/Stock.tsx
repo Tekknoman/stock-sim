@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { Stock as StockType, PriceHistoryPoint } from "../../types";
 import useStockStore from "../../store/stockStore";
+import useSimulationStore from "../../store/simulationStore";
 import socketService from "../../services/socket";
 
 interface StockViewProps {
@@ -19,76 +20,61 @@ interface StockViewProps {
 }
 
 type TimeSpan = "1m" | "5m" | "15m" | "30m" | "1h" | "all";
-const interval = 1;
 
 const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
-  const { stocks, getStockHistory } = useStockStore();
+  const { stocks, getStockHistory, stockHistories, setupWebSocketListeners } =
+    useStockStore();
+
+  const { status: simulationStatus } = useSimulationStore();
   const stock = stocks.find((s) => s.id === stockId);
 
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [timeSpan, setTimeSpan] = useState<TimeSpan>("1h");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // Time span conversion to limit parameter
-  const timeSpanToLimit: Record<TimeSpan, number> = useMemo(() => {
-    return {
-      "1m": 1 * (60 / interval),
-      "5m": 5 * (60 / interval),
-      "15m": 15 * (60 / interval),
-      "30m": 30 * (60 / interval),
-      "1h": 60 * (60 / interval),
-      all: 0, // All history
-    };
-  }, []);
+  // Get stock history loading state
+  const isHistoryLoading = useMemo(
+    () => stockHistories[stockId]?.isLoading || false,
+    [stockId, stockHistories]
+  );
+
+  // Get stock history data with memoization
+  const priceHistory = useMemo(
+    () => stockHistories[stockId]?.data || [],
+    [stockId, stockHistories]
+  );
 
   // Format timestamps based on selected time span
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    const options: Intl.DateTimeFormatOptions = {
+
+    // Always include hours, minutes, and seconds for precise time display
+    return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-    };
-    return date.toLocaleString("en-US", options);
+    });
   };
-
-  // Fetch price history for the stock
-  const fetchHistory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const limit = timeSpanToLimit[timeSpan];
-      const history = await getStockHistory(stockId, limit);
-      setPriceHistory(history);
-    } catch (err) {
-      console.error("Error fetching stock history:", err);
-      setError("Failed to load price history");
-    } finally {
-      setLoading(false);
-    }
-  }, [getStockHistory, stockId, timeSpan, timeSpanToLimit]);
 
   // Initial fetch and timespan change
   useEffect(() => {
     if (stockId) {
-      fetchHistory();
+      getStockHistory(stockId, timeSpan);
     }
-  }, [stockId, timeSpan, fetchHistory]);
+  }, [stockId, timeSpan, getStockHistory]);
 
-  // Setup real-time updates through websocket
+  // Setup WebSocket listeners for real-time updates
   useEffect(() => {
     if (!autoRefresh) return;
 
-    socketService.connect();
+    // Set up global WebSocket listeners - returns cleanup function
+    const cleanup = setupWebSocketListeners();
 
-    // Set up a real-time listener for price updates
+    // Update last update timestamp when we receive updates
     const handlePriceUpdate = (updates: any[]) => {
       const stockUpdate = updates.find((update) => update.id === stockId);
-      if (stockUpdate && stock) {
-        // When price updates, fetch latest history
-        fetchHistory();
+      if (stockUpdate) {
+        setLastUpdate(new Date());
       }
     };
 
@@ -96,43 +82,46 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
 
     // Clean up
     return () => {
+      cleanup();
       socketService.removeListener("prices:update", handlePriceUpdate);
     };
-  }, [stockId, autoRefresh, stock, fetchHistory]);
+  }, [stockId, autoRefresh, setupWebSocketListeners]);
 
-  // Calculate domain for X-axis based on the timespan state
+  // Calculate domain for X-axis based on the timespan
   const calculateCurrentDomain = () => {
     if (chartData.length === 0) return ["auto", "auto"];
-    // Calculate time range based on selected timespan
+
+    // For "all" timespan, use the data's min/max
+    if (timeSpan === "all") {
+      const minTimestamp = chartData[0]?.timestamp || "auto";
+      const maxTimestamp = chartData[chartData.length - 1]?.timestamp || "auto";
+      return [minTimestamp, maxTimestamp];
+    }
+
+    // For other timespans, calculate based on current time
     const now = new Date();
     let minDate: Date;
 
     // Set min date based on timespan
     switch (timeSpan) {
       case "1m":
-        minDate = new Date(now.getTime() - 1000);
-        break;
-      case "5m":
-        minDate = new Date(now.getTime() - 5 * 1000);
-        break;
-      case "15m":
-        minDate = new Date(now.getTime() - 15 * 1000);
-        break;
-      case "30m":
-        minDate = new Date(now.getTime() - 30 * 1000);
-        break;
-      case "1h":
         minDate = new Date(now.getTime() - 60 * 1000);
         break;
-      case "all":
-        // For 'all', use the data's min/max
-        const minTimestamp = chartData[0]?.timestamp || "auto";
-        const maxTimestamp =
-          chartData[chartData.length - 1]?.timestamp || "auto";
-        return [minTimestamp, maxTimestamp];
+      case "5m":
+        minDate = new Date(now.getTime() - 5 * 60 * 1000);
+        break;
+      case "15m":
+        minDate = new Date(now.getTime() - 15 * 60 * 1000);
+        break;
+      case "30m":
+        minDate = new Date(now.getTime() - 30 * 60 * 1000);
+        break;
+      case "1h":
+        minDate = new Date(now.getTime() - 60 * 60 * 1000);
+        break;
+      default:
+        return ["auto", "auto"];
     }
-
-    if (!minDate || !now) return ["auto", "auto"];
 
     // Format timestamps for domain
     const minTimestamp = formatTimestamp(minDate.toString());
@@ -163,6 +152,12 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
       rawTimestamp: new Date(point.timestamp).getTime(), // For sorting
     }))
     .sort((a, b) => a.rawTimestamp - b.rawTimestamp); // Ensure chronological order
+
+  // Handle manual refresh
+  const handleManualRefresh = () => {
+    getStockHistory(stockId, timeSpan);
+    setLastUpdate(new Date());
+  };
 
   return (
     <div className="bg-dark-300 p-6 rounded-lg">
@@ -230,33 +225,38 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
             </button>
             <button
               className="px-2 py-1 text-xs bg-dark-100 hover:bg-dark-200 rounded"
-              onClick={fetchHistory}
+              onClick={handleManualRefresh}
               title="Manually refresh data"
             >
               ↻
             </button>
+            <div className="text-xs">
+              {lastUpdate && `Last update: ${lastUpdate.toLocaleTimeString()}`}
+            </div>
           </div>
         </div>
 
         {/* Time span selector */}
         <div className="flex mb-4 bg-dark-400 rounded-t-lg p-2 space-x-1">
-          {(Object.keys(timeSpanToLimit) as TimeSpan[]).map((span) => (
-            <button
-              key={span}
-              className={`px-3 py-1 text-sm rounded ${
-                timeSpan === span
-                  ? "bg-primary-600 text-white"
-                  : "bg-dark-300 hover:bg-dark-200"
-              }`}
-              onClick={() => setTimeSpan(span)}
-            >
-              {span === "all" ? "All" : span}
-            </button>
-          ))}
+          {(["1m", "5m", "15m", "30m", "1h", "all"] as TimeSpan[]).map(
+            (span) => (
+              <button
+                key={span}
+                className={`px-3 py-1 text-sm rounded ${
+                  timeSpan === span
+                    ? "bg-primary-600 text-white"
+                    : "bg-dark-300 hover:bg-dark-200"
+                }`}
+                onClick={() => setTimeSpan(span)}
+              >
+                {span === "all" ? "All" : span}
+              </button>
+            )
+          )}
         </div>
 
         <div className="h-80 bg-dark-400 rounded-b-lg p-4 relative">
-          {loading && (
+          {isHistoryLoading && (
             <div className="absolute top-2 right-2 z-10">
               <div className="flex items-center bg-dark-500/70 px-2 py-1 rounded-full">
                 <svg
@@ -284,11 +284,7 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
             </div>
           )}
 
-          {error ? (
-            <div className="h-full flex justify-center items-center text-red-400">
-              {error}
-            </div>
-          ) : chartData.length > 0 ? (
+          {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={chartData}
@@ -325,6 +321,7 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
                   dot={chartData.length < 30}
                   activeDot={{ r: 8 }}
                   animationDuration={300}
+                  isAnimationActive={!autoRefresh} // Disable animation during live updates
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -396,6 +393,10 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
             <div className="text-sm mt-1 text-gray-400">
               Data points: {priceHistory.length}
               {timeSpan !== "all" && ` (last ${timeSpan})`}
+            </div>
+            <div className="text-sm mt-1 text-gray-400">
+              Simulation speed: {(simulationStatus.interval / 1000).toFixed(1)}s
+              interval
             </div>
           </div>
         </div>
