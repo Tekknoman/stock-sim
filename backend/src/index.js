@@ -16,6 +16,9 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const SimulationEngine = require('./utils/simulationEngine');
 const Settings = require('./models/Settings');
 
+// Import socket utility module
+const socketUtil = require('./utils/socket');
+
 // Create Express app
 const app = express();
 const server = http.createServer(app);
@@ -25,6 +28,9 @@ const io = new Server(server, {
         methods: ['GET', 'POST', 'PUT', 'DELETE']
     }
 });
+
+// Set the io instance in our socket utility module
+socketUtil.setIo(io);
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, '../public/uploads');

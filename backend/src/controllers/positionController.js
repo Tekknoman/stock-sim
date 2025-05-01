@@ -1,6 +1,7 @@
 const Position = require('../models/Position');
 const Stock = require('../models/Stock');
 const User = require('../models/User');
+const socketUtil = require('../utils/socket'); // Import socket.io utility
 
 // Get all positions
 exports.getAllPositions = (req, res) => {
@@ -55,6 +56,23 @@ exports.createPosition = (req, res) => {
             open_price: stock.current_price
         });
 
+        // Get the complete position object with all details
+        const position = Position.getById(id);
+
+        // Add user details to the position object for the frontend
+        position.user_name = user.name;
+        position.user_icon = user.icon_url;
+
+        // Emit a WebSocket event for real-time position updates
+        const io = socketUtil.io();
+        if (io) {
+            io.emit('position:update', {
+                action: 'create',
+                stockId: stock_id,
+                position
+            });
+        }
+
         res.status(201).json({ id, message: 'Position created successfully' });
     } catch (error) {
         console.error('Error creating position:', error);
@@ -82,10 +100,24 @@ exports.closePosition = (req, res) => {
             return res.status(404).json({ error: 'Associated stock not found' });
         }
 
+        // Store the stock_id before closing for the WebSocket event
+        const stockId = position.stock_id;
+
         Position.close(id, stock.current_price);
 
         // Get updated position to return
         const updatedPosition = Position.getById(id);
+
+        // Emit a WebSocket event for real-time position updates
+        const io = socketUtil.io();
+        if (io) {
+            io.emit('position:update', {
+                action: 'close',
+                stockId,
+                position: updatedPosition
+            });
+        }
+
         res.json({
             message: 'Position closed successfully',
             position: updatedPosition,

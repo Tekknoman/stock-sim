@@ -29,7 +29,12 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   const [sellConfirmOpen, setSellConfirmOpen] = useState(false);
   const [sellSuccess, setSellSuccess] = useState<string | null>(null);
 
-  const { getPositionsForStock, closePosition } = usePositionStore();
+  const {
+    getPositionsForStock,
+    closePosition,
+    setupSocketListeners,
+    stockPositions: cachedPositions,
+  } = usePositionStore();
   const { getStockHistory, stockHistories, setupWebSocketListeners } =
     useStockStore();
   const { selectedUser, userPositions: allUserPositions } = useUserStore();
@@ -75,21 +80,27 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
     setPriceChange({ value: change, percent: percentChange });
   }, [stock.current_price, stock.base_value]);
 
-  // Load positions for this stock
+  // Set up WebSocket listeners for position updates and initial data load
   useEffect(() => {
+    // Initial load of positions
     const loadPositions = async () => {
       const positions = await getPositionsForStock(stock.id);
       setStockPositions(positions);
     };
     loadPositions();
 
-    // Subscribe to position changes
-    const positionUpdateInterval = setInterval(loadPositions, 10000);
+    // Set up socket listeners for real-time position updates
+    const cleanup = setupSocketListeners();
 
-    return () => {
-      clearInterval(positionUpdateInterval);
-    };
-  }, [stock.id, getPositionsForStock]);
+    return cleanup;
+  }, [stock.id, getPositionsForStock, setupSocketListeners]);
+
+  // Update positions from cache when it changes
+  useEffect(() => {
+    if (cachedPositions[stock.id]) {
+      setStockPositions(cachedPositions[stock.id]);
+    }
+  }, [cachedPositions, stock.id]);
 
   // Filter user positions for this stock
   useEffect(() => {
@@ -153,19 +164,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
         `Sold ${sellingPosition.amount} shares for ${profit.toFixed(2)} profit`
       );
 
-      // Force refresh positions after selling
-      const updatedPositions = await getPositionsForStock(stock.id);
-      setStockPositions(updatedPositions);
-
-      // Update user positions
-      if (selectedUser) {
-        const positions = allUserPositions.filter(
-          (p) =>
-            p.stock_id === stock.id && p.is_open && p.id !== sellingPosition.id
-        );
-        setUserPositions(positions);
-      }
-
+      // No need to manually refresh here - the WebSocket will handle it
       setTimeout(() => setSellSuccess(null), 3000);
     } catch (err) {
       console.error("Error selling position:", err);
@@ -178,6 +177,13 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   const handleCancelSell = () => {
     setSellConfirmOpen(false);
     setSellingPosition(null);
+  };
+
+  // Calculate performance percentage for position
+  const calculatePerformancePercent = (position: Position): number => {
+    return (
+      ((stock.current_price - position.open_price) / position.open_price) * 100
+    );
   };
 
   // Format the chart data from the history store
@@ -440,19 +446,32 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
         </div>
       )}
 
-      {/* Other users' positions */}
+      {/* Other users' positions with performance percentages */}
       {stockPositions.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
-          {stockPositions.slice(0, 5).map((position) => (
-            <UserChip
-              key={position.id}
-              name={position.user_name || ""}
-              iconUrl={position.user_icon || undefined}
-              tooltipContent={`${
-                position.amount
-              } shares @ $${position.open_price.toFixed(2)}`}
-            />
-          ))}
+          {stockPositions.slice(0, 5).map((position) => {
+            const performancePercent = calculatePerformancePercent(position);
+            const performanceClass =
+              performancePercent >= 0 ? "text-stock-up" : "text-stock-down";
+
+            return (
+              <div key={position.id} className="flex flex-col items-center">
+                <UserChip
+                  name={position.user_name || ""}
+                  iconUrl={position.user_icon || undefined}
+                  tooltipContent={`${
+                    position.amount
+                  } shares @ $${position.open_price.toFixed(2)}`}
+                />
+                <span
+                  className={`text-xs ${performanceClass} font-medium mt-1`}
+                >
+                  {performancePercent >= 0 ? "+" : ""}
+                  {performancePercent.toFixed(1)}%
+                </span>
+              </div>
+            );
+          })}
           {stockPositions.length > 5 && (
             <span className="text-xs text-gray-400 self-center ml-1">
               +{stockPositions.length - 5} more
@@ -477,6 +496,8 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
                     typeof position.profit_loss === "number"
                       ? position.profit_loss
                       : 0;
+                  const performancePercent =
+                    calculatePerformancePercent(position);
                   return (
                     <div
                       key={position.id}
@@ -489,7 +510,9 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
                         }
                       >
                         {position.amount} shares | {positionPL > 0 && "+"}
-                        {positionPL.toFixed(2)}
+                        {positionPL.toFixed(2)} (
+                        {performancePercent >= 0 ? "+" : ""}
+                        {performancePercent.toFixed(2)}%)
                       </span>
                     </div>
                   );

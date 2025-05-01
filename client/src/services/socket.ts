@@ -42,6 +42,11 @@ class SocketService {
         this.addListener('simulation:state', callback);
     }
 
+    // New method to handle position updates
+    onPositionUpdate(callback: (data: { action: 'create' | 'close', stockId: number, position: any }) => void) {
+        this.addListener('position:update', callback);
+    }
+
     private addListener(event: string, callback: Function) {
         if (!this.listeners[event]) {
             this.listeners[event] = [];

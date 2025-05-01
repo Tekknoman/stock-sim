@@ -1,20 +1,25 @@
 import { create } from 'zustand';
 import { Position } from '../types';
 import * as api from '../services/api';
+import socketService from '../services/socket';
 
 interface PositionState {
     positions: Position[];
     loading: boolean;
     error: string | null;
+    stockPositions: { [key: number]: Position[] }; // Cache of positions by stock ID
     fetchPositions: () => Promise<void>;
     createPosition: (stockId: number, userId: number, amount: number) => Promise<number>;
     closePosition: (positionId: number) => Promise<void>;
     getPositionsForStock: (stockId: number) => Promise<Position[]>;
     getPositionById: (id: number) => Promise<Position | null>;
+    setupSocketListeners: () => () => void; // Returns cleanup function
+    updateStockPositionsCache: (stockId: number, positions: Position[]) => void;
 }
 
 const usePositionStore = create<PositionState>((set, get) => ({
     positions: [],
+    stockPositions: {},
     loading: false,
     error: null,
 
@@ -62,7 +67,12 @@ const usePositionStore = create<PositionState>((set, get) => ({
     getPositionsForStock: async (stockId: number): Promise<Position[]> => {
         try {
             const response = await api.getStockLeaderboard(stockId);
-            return response.data;
+            const positions = response.data;
+            
+            // Update the cache
+            get().updateStockPositionsCache(stockId, positions);
+            
+            return positions;
         } catch (error) {
             console.error('Error fetching stock positions:', error);
             return [];
@@ -77,6 +87,47 @@ const usePositionStore = create<PositionState>((set, get) => ({
             console.error('Error fetching position:', error);
             return null;
         }
+    },
+    
+    updateStockPositionsCache: (stockId: number, positions: Position[]) => {
+        set((state) => ({
+            stockPositions: {
+                ...state.stockPositions,
+                [stockId]: positions
+            }
+        }));
+    },
+    
+    setupSocketListeners: () => {
+        // Setup the socket listener for position updates
+        const handlePositionUpdate = (data: { action: 'create' | 'close', stockId: number, position: any }) => {
+            const { action, stockId, position } = data;
+            
+            // Update cached positions for the affected stock
+            if (get().stockPositions[stockId]) {
+                const currentPositions = [...get().stockPositions[stockId]];
+                
+                if (action === 'close') {
+                    // Remove the closed position
+                    const updatedPositions = currentPositions.filter(p => p.id !== position.id);
+                    get().updateStockPositionsCache(stockId, updatedPositions);
+                } else if (action === 'create') {
+                    // Add the new position
+                    get().updateStockPositionsCache(stockId, [...currentPositions, position]);
+                }
+            }
+            
+            // Also update the main positions array
+            get().fetchPositions();
+        };
+        
+        // Register the listener
+        socketService.onPositionUpdate(handlePositionUpdate);
+        
+        // Return cleanup function
+        return () => {
+            socketService.removeListener('position:update', handlePositionUpdate);
+        };
     }
 }));
 
