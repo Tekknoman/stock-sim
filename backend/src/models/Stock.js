@@ -71,14 +71,33 @@ class Stock {
     }
 
     // Get price history for a stock
-    static getPriceHistory(id, limit = 100) {
-        return db.prepare(`
-      SELECT price, timestamp 
-      FROM stock_history 
-      WHERE stock_id = ? 
-      ORDER BY timestamp DESC 
-      LIMIT ?
-    `).all(id, limit);
+    static getPriceHistory(id, limit = 100, granularity = 1) {
+        if (granularity <= 1) {
+            // If granularity is 1 or less, return all points up to the limit
+            return db.prepare(`
+                SELECT price, datetime(strftime('%s',timestamp), 'unixepoch', 'localtime') as timestamp 
+                FROM stock_history 
+                WHERE stock_id = ? 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            `).all(id, limit);
+        } else {
+            // Use ROW_NUMBER() to get every nth row
+            return db.prepare(`
+                WITH numbered AS (
+                    SELECT 
+                        price, 
+                        datetime(strftime('%s',timestamp), 'unixepoch', 'localtime') as timestamp,
+                        ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY timestamp DESC) as row_num
+                    FROM stock_history
+                    WHERE stock_id = ?
+                )
+                SELECT price, timestamp
+                FROM numbered
+                WHERE row_num % ? = 1
+                LIMIT ?
+            `).all(id, granularity, limit);
+        }
     }
 }
 

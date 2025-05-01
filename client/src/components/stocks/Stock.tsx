@@ -31,6 +31,10 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
   const [timeSpan, setTimeSpan] = useState<TimeSpan>("1h");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [currentDomain, setCurrentDomain] = useState<string[]>([
+    "auto",
+    "auto",
+  ]);
 
   // Get stock history loading state
   const isHistoryLoading = useMemo(
@@ -49,12 +53,25 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
     const date = new Date(timestamp);
 
     // Always include hours, minutes, and seconds for precise time display
-    return date.toLocaleTimeString("en-US", {
+    return date.toLocaleTimeString("de-CH", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
   };
+
+  // Transform data for chart
+  const chartData = useMemo(
+    () =>
+      priceHistory
+        .map((point) => ({
+          timestamp: formatTimestamp(point.timestamp),
+          price: point.price,
+          rawTimestamp: new Date(point.timestamp).getTime(), // For sorting
+        }))
+        .sort((a, b) => a.rawTimestamp - b.rawTimestamp),
+    [priceHistory]
+  ); // Ensure chronological order
 
   // Initial fetch and timespan change
   useEffect(() => {
@@ -88,47 +105,43 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
   }, [stockId, autoRefresh, setupWebSocketListeners]);
 
   // Calculate domain for X-axis based on the timespan
-  const calculateCurrentDomain = () => {
-    if (chartData.length === 0) return ["auto", "auto"];
+  useEffect(() => {
+    if (chartData.length === 0) setCurrentDomain(["auto", "auto"]);
 
     // For "all" timespan, use the data's min/max
     if (timeSpan === "all") {
       const minTimestamp = chartData[0]?.timestamp || "auto";
       const maxTimestamp = chartData[chartData.length - 1]?.timestamp || "auto";
-      return [minTimestamp, maxTimestamp];
+      setCurrentDomain([minTimestamp, maxTimestamp]);
     }
 
     // For other timespans, calculate based on current time
     const now = new Date();
-    let minDate: Date;
 
-    // Set min date based on timespan
+    const cutoffTime = new Date();
     switch (timeSpan) {
       case "1m":
-        minDate = new Date(now.getTime() - 60 * 1000);
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - 1);
         break;
       case "5m":
-        minDate = new Date(now.getTime() - 5 * 60 * 1000);
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - 5);
         break;
       case "15m":
-        minDate = new Date(now.getTime() - 15 * 60 * 1000);
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - 15);
         break;
       case "30m":
-        minDate = new Date(now.getTime() - 30 * 60 * 1000);
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - 30);
         break;
       case "1h":
-        minDate = new Date(now.getTime() - 60 * 60 * 1000);
+        cutoffTime.setHours(cutoffTime.getHours() - 1);
         break;
-      default:
-        return ["auto", "auto"];
     }
-
     // Format timestamps for domain
-    const minTimestamp = formatTimestamp(minDate.toString());
+    const minTimestamp = formatTimestamp(cutoffTime.toString());
     const maxTimestamp = formatTimestamp(now.toString());
 
-    return [minTimestamp, maxTimestamp];
-  };
+    setCurrentDomain([minTimestamp, maxTimestamp]);
+  }, [timeSpan, chartData]);
 
   if (!stock) {
     return (
@@ -143,15 +156,6 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
       </div>
     );
   }
-
-  // Transform data for chart
-  const chartData = priceHistory
-    .map((point) => ({
-      timestamp: formatTimestamp(point.timestamp),
-      price: point.price,
-      rawTimestamp: new Date(point.timestamp).getTime(), // For sorting
-    }))
-    .sort((a, b) => a.rawTimestamp - b.rawTimestamp); // Ensure chronological order
 
   // Handle manual refresh
   const handleManualRefresh = () => {
@@ -292,11 +296,16 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis
-                  dataKey="timestamp"
+                  dataKey="rawTimestamp"
+                  tickFormatter={(timestamp) =>
+                    formatTimestamp(new Date(timestamp).toString())
+                  }
                   stroke="#9CA3AF"
                   tick={{ fontSize: 12 }}
                   tickLine={{ stroke: "#4B5563" }}
-                  domain={calculateCurrentDomain()}
+                  domain={currentDomain}
+                  type="number"
+                  scale={"time"}
                 />
                 <YAxis
                   stroke="#9CA3AF"
@@ -311,6 +320,9 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
                     color: "white",
                   }}
                   formatter={(value: any) => [`$${value}`, "Price"]}
+                  labelFormatter={(label: any) =>
+                    `Time: ${formatTimestamp(new Date(label).toString())}`
+                  }
                 />
                 <Legend />
                 <Line

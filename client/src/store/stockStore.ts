@@ -63,11 +63,44 @@ const calculatePointsForTimeSpan = (timeSpan: string, simInterval: number): numb
             return Math.min(200, Math.ceil(1800 / simIntervalSec));
         case "1h": 
             return Math.min(240, Math.ceil(3600 / simIntervalSec));
-        case "all": 
-            return 500; // Max points for all history
+        case "all": return 0;
         default: 
             return 240;
     }
+};
+
+// Calculate granularity based on timespan and simulation interval
+const calculateGranularity = (limit:number, timeSpan: string, simInterval: number, firstData: Date): number => {
+    // Convert simulation interval to seconds (from ms)
+    const simIntervalSec = simInterval / 1000;
+    
+    // Calculate time span in seconds
+    let timeSpanInSeconds: number;
+    switch (timeSpan) {
+        case "1m": timeSpanInSeconds = 60; break;
+        case "5m": timeSpanInSeconds = 5 * 60; break;
+        case "15m": timeSpanInSeconds = 15 * 60; break;
+        case "30m": timeSpanInSeconds = 30 * 60; break;
+        case "1h": timeSpanInSeconds = 60 * 60; break;
+        case "all":
+        // use FirstData for the span
+        const now = new Date();
+        const firstDataTime = firstData.getTime();
+        const nowTime = now.getTime();
+        timeSpanInSeconds = Math.round((nowTime - firstDataTime) / 1000);
+        break;
+        default: timeSpanInSeconds = 60 * 60; // Default to 1 hour
+    }
+    
+    // Calculate how many data points would be generated during this timespan
+    const potentialPoints = Math.ceil(timeSpanInSeconds / simIntervalSec);
+    
+    // Calculate granularity (take every nth point)
+    // If potentialPoints <= limit, take every point (granularity = 1)
+    // Otherwise, calculate how many points to skip to get down to limit
+    const granularity = potentialPoints <= limit ? 1 : Math.ceil(potentialPoints / limit);
+    
+    return granularity;
 };
 
 // Helper function to get simulation interval
@@ -143,12 +176,12 @@ const useStockStore = create<StockState>((set, get) => ({
     },
 
     getStockHistory: async (stockId: number, timeSpan: string, limit?: number): Promise<PriceHistoryPoint[]> => {
-        const { stockHistories } = get();
+        const { stockHistories, stocks } = get();
         const stockHistory = stockHistories[stockId];
         
         // Get simulation interval for proper limit calculation
         const simInterval = getSimulationInterval();
-        const calculatedLimit = limit || calculatePointsForTimeSpan(timeSpan, simInterval);
+        // const calculatedLimit = limit || calculatePointsForTimeSpan(timeSpan, simInterval);
         
         // Check if we need to refresh data
         if (!stockHistory || needsRefresh(stockHistory.lastFetch, timeSpan, stockHistory.timeSpan)) {
@@ -165,7 +198,7 @@ const useStockStore = create<StockState>((set, get) => ({
             }));
             
             try {
-                const response = await api.getStockHistory(stockId, calculatedLimit);
+                const response = await api.getStockHistory(stockId, 240, calculateGranularity(240, timeSpan, simInterval, new Date(stocks[0].created_at)));
                 const now = Date.now();
                 
                 // Normalize the data to ensure consistent format
@@ -225,12 +258,14 @@ const useStockStore = create<StockState>((set, get) => ({
                 
                 // Get simulation interval
                 const simInterval = getSimulationInterval();
+
+
                 
                 // Check if we should add a new point based on simulation interval and last update
                 const shouldAddPoint = 
                     !stockHistory.lastUpdate || 
-                    (currentTime - stockHistory.lastUpdate >= simInterval * 0.9); // Add a small buffer
-                
+                    (currentTime - stockHistory.lastUpdate >= simInterval * 0.9) || // Add a small buffer
+                currentTime % calculateGranularity(240, stockHistory.timeSpan, simInterval, now) !== 0;
                 if (!shouldAddPoint) {
                     return state; // Skip adding point if too soon
                 }
@@ -267,22 +302,54 @@ const useStockStore = create<StockState>((set, get) => ({
                 }
                 
                 // Ensure we maintain the right density of points based on simulation interval
-                const maxPoints = calculatePointsForTimeSpan(stockHistory.timeSpan, simInterval);
+                // const maxPoints = calculatePointsForTimeSpan(stockHistory.timeSpan, simInterval);
+                const maxPoints = 240;
                 
-                // If we have more points than needed, sample them strategically
+                // If we have more points than needed, sample them evenly across time
                 if (updatedData.length > maxPoints) {
-                    // Ensure we keep the first and last points for proper graph shape
+                    // Always keep the first and last points for proper graph shape
                     const first = updatedData[0];
                     const last = updatedData[updatedData.length - 1];
                     
-                    // For the rest, sample evenly
+                    // Calculate time range
+                    const startTime = new Date(first.timestamp).getTime();
+                    const endTime = new Date(last.timestamp).getTime();
+                    const timeRange = endTime - startTime;
+                    
+                    // Skip first and last points as we'll add them separately
                     const middleData = updatedData.slice(1, -1);
-                    const step = Math.ceil(middleData.length / (maxPoints - 2));
                     
-                    const sampledMiddle = middleData.filter((_, index) => index % step === 0);
+                    // Create time buckets and select one point from each bucket
+                    const bucketCount = maxPoints - 2; // minus first and last points
+                    const bucketSize = timeRange / bucketCount;
                     
-                    // Combine with first and last points
-                    updatedData = [first, ...sampledMiddle, last];
+                    const sampledMiddle = [];
+                    for (let i = 0; i < bucketCount; i++) {
+                        const bucketStart = startTime + (i * bucketSize);
+                        const bucketEnd = bucketStart + bucketSize;
+                        
+                        // Find points in this time bucket
+                        const bucketPoints = middleData.filter(point => {
+                            const pointTime = new Date(point.timestamp).getTime();
+                            return pointTime >= bucketStart && pointTime < bucketEnd;
+                        });
+                        
+                        // If bucket has points, take the one closest to the center of the bucket
+                        if (bucketPoints.length > 0) {
+                            const bucketCenter = bucketStart + (bucketSize / 2);
+                            const closest = bucketPoints.reduce((prev, curr) => {
+                                const prevDiff = Math.abs(new Date(prev.timestamp).getTime() - bucketCenter);
+                                const currDiff = Math.abs(new Date(curr.timestamp).getTime() - bucketCenter);
+                                return currDiff < prevDiff ? curr : prev;
+                            });
+                            sampledMiddle.push(closest);
+                        }
+                    }
+                    
+                    // Combine with first and last points and sort by timestamp
+                    updatedData = [first, ...sampledMiddle, last].sort((a, b) => 
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                    );
                 }
                 
                 return {

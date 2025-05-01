@@ -111,9 +111,8 @@ exports.deleteStock = (req, res) => {
 exports.getPriceHistory = (req, res) => {
     try {
         const { id } = req.params;
-        const { limit } = req.query;
-
-        const history = Stock.getPriceHistory(id, limit ? parseInt(limit) : 100);
+        const { limit, granularity } = req.query;
+        const history = Stock.getPriceHistory(id, limit ? parseInt(limit) : 100, granularity ? parseInt(granularity) : 1);
         res.json(history);
     } catch (error) {
         console.error('Error getting price history:', error);

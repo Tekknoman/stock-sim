@@ -360,6 +360,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
                     : "rgba(239, 68, 68, 0.2)"
                 }
                 strokeWidth={1.5}
+                isAnimationActive={false}
               />
 
               {/* Show user position values on graph if toggle is active */}

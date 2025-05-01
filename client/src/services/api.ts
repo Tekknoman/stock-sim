@@ -16,7 +16,7 @@ export const getStock = (id: number) => api.get<Stock>(`/stocks/${id}`);
 export const createStock = (stock: Partial<Stock>) => api.post<{ id: number, message: string }>('/stocks', stock);
 export const updateStock = (id: number, stock: Partial<Stock>) => api.put<{ message: string }>(`/stocks/${id}`, stock);
 export const deleteStock = (id: number) => api.delete<{ message: string }>(`/stocks/${id}`);
-export const getStockHistory = (id: number, limit?: number) => api.get<PriceHistoryPoint[]>(`/stocks/${id}/history${limit ? `?limit=${limit}` : ''}`);
+export const getStockHistory = (id: number, limit?: number, granularity?: number) => api.get<PriceHistoryPoint[]>(`/stocks/${id}/history${limit ? `?limit=${limit}` : ''}${granularity ? `&granularity=${granularity}` : ''}`);
 export const getStockLeaderboard = (id: number) => api.get<Position[]>(`/stocks/${id}/leaderboard`);
 export const applyStockEvent = (id: number, value: number, message?: string) => api.post<{ message: string }>(`/stocks/${id}/event`, { value, message });
 
