@@ -97,6 +97,10 @@ app.post('/api/stocks/:id/event', (req, res) => {
     res.json({ message: `Event applied to stock ID ${id}` });
 });
 
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 // Socket.io events
 io.on('connection', (socket) => {
     console.log('Client connected');
