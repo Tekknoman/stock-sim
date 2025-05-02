@@ -30,17 +30,22 @@ function App() {
     fetchUsers();
   }, [fetchUsers]);
 
+    useEffect(() => {
+    // Connect to socket.io
+    socketService.connect();
+        // Clean up
+    return () => {
+      socketService.disconnect();
+    };
+  }, []);
+
   // Initialize socket connection and set up listeners
   useEffect(() => {
-    // Connect to WebSocket server
-    socketService.connect();
-
     // Set up position update listeners
     const cleanupPositionListeners = setupSocketListeners();
 
     // Clean up on unmount
     return () => {
-      socketService.disconnect();
       cleanupPositionListeners();
     };
   }, [setupSocketListeners]);
