@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { StockUpdate, StockEvent, SimulationStatus } from '../types';
 
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3000';
+// Use the same API URL for socket connection
+const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 class SocketService {
     private socket: Socket | null = null;
