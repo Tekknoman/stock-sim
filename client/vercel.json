@@ -5,6 +5,6 @@
   "outputDirectory": "build",
   "regions": ["fra1"],
   "env": {
-    "REACT_APP_API_URL": "@api_url"
+    "REACT_APP_API_URL": "https://stock-sim-backend.onrender.com"
   }
 }
