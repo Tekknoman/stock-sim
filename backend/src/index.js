@@ -19,6 +19,11 @@ const Settings = require('./models/Settings');
 // Import socket utility module
 const socketUtil = require('./utils/socket');
 
+// Import database setup
+const { setupDatabase } = require('./utils/setupDatabase');
+// Setup database
+setupDatabase();
+
 // Create Express app
 const app = express();
 const server = http.createServer(app);
