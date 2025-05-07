@@ -17,8 +17,6 @@ const StockGrid: React.FC = () => {
   
   // Listen for real-time stock updates
   useEffect(() => {
-    // Connect to socket.io
-    socketService.connect();
     
     // Listen for stock price updates
     socketService.onPriceUpdate(updates => {
@@ -33,10 +31,7 @@ const StockGrid: React.FC = () => {
       fetchStocks();
     });
     
-    // Clean up
-    return () => {
-      socketService.disconnect();
-    };
+
   }, [updateStockPrices, fetchStocks]);
   
   const handleStockClick = (stockId: number) => {

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockSim Backend</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            padding: 2rem;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        h1 {
+            color: #4caf50;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #9e9e9e;
+            margin-bottom: 2rem;
+        }
+
+        a.button {
+            display: inline-block;
+            background-color: #4caf50;
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            margin: 1rem 0;
+        }
+
+        a.button:hover {
+            background-color: #45a049;
+        }
+
+        .game-container {
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: #252525;
+            border-radius: 5px;
+        }
+
+        .target {
+            width: 50px;
+            height: 50px;
+            background-color: #4caf50;
+            border-radius: 50%;
+            margin: 20px auto;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .target:hover {
+            transform: scale(1.1);
+        }
+
+        .score {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer {
+            margin-top: 2rem;
+            color: #757575;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>StockSim Backend</h1>
+        <p class="subtitle">You've reached the server side of the operation</p>
+
+        <p>This is just the backend server for StockSim. Not much to see here!</p>
+        <p>Looking for the actual application?</p>
+
+        <a href="/app" class="button">Go to StockSim Frontend</a>
+
+        <div class="game-container">
+            <h2>While you're here...</h2>
+            <p>Try our little "Stock Click" game. How many can you catch in 10 seconds?</p>
+            <div class="score">Score: <span id="score">0</span> | Time: <span id="time">10</span>s</div>
+            <div class="target" id="target"></div>
+            <button id="start-game" class="button">Start Game</button>
+        </div>
+
+        <div class="footer">
+            <p>StockSim © 2023 | The server is running and healthy</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const target = document.getElementById('target');
+            const scoreDisplay = document.getElementById('score');
+            const timeDisplay = document.getElementById('time');
+            const startButton = document.getElementById('start-game');
+
+            let score = 0;
+            let timeLeft = 10;
+            let gameInterval;
+            let gameActive = false;
+
+            // Hide target initially
+            target.style.display = 'none';
+
+            startButton.addEventListener('click', startGame);
+
+            function startGame() {
+                if (gameActive) return;
+
+                gameActive = true;
+                score = 0;
+                timeLeft = 10;
+                scoreDisplay.textContent = score;
+                timeDisplay.textContent = timeLeft;
+                target.style.display = 'block';
+                startButton.textContent = 'Game in progress...';
+                startButton.disabled = true;
+
+                // Position target randomly
+                moveTarget();
+
+                // Set up click handler
+                target.addEventListener('click', targetClick);
+
+                // Start countdown
+                gameInterval = setInterval(function () {
+                    timeLeft--;
+                    timeDisplay.textContent = timeLeft;
+
+                    if (timeLeft <= 0) {
+                        endGame();
+                    }
+                }, 1000);
+            }
+
+            function targetClick() {
+                if (!gameActive) return;
+
+                score++;
+                scoreDisplay.textContent = score;
+                moveTarget();
+            }
+
+            function moveTarget() {
+                const gameContainer = document.querySelector('.game-container');
+                const maxX = gameContainer.clientWidth - 60;
+                const maxY = 150;
+
+                const randomX = Math.floor(Math.random() * maxX);
+                const randomY = Math.floor(Math.random() * maxY);
+
+                target.style.marginLeft = randomX + 'px';
+                target.style.marginTop = randomY + 'px';
+                target.style.marginRight = 'auto';
+            }
+
+            function endGame() {
+                clearInterval(gameInterval);
+                gameActive = false;
+                target.style.display = 'none';
+                target.removeEventListener('click', targetClick);
+                startButton.disabled = false;
+                startButton.textContent = 'Play Again';
+                alert(`Game over! Your score: ${score}` + (score > 15 ? " - Wow, you're a stock-picking pro!" : " - Keep practicing your stock picking!"));
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -11,7 +11,12 @@ class SocketService {
     connect() {
         if (this.socket) return;
 
-        this.socket = io(SOCKET_URL);
+        this.socket = io(SOCKET_URL.split("/").slice(0, -1).join("/"), {
+            transports: ['websocket'],
+            autoConnect: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+        });
 
         // Re-attach listeners if reconnecting
         Object.keys(this.listeners).forEach(event => {

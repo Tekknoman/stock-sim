@@ -19,6 +19,11 @@ const Settings = require('./models/Settings');
 // Import socket utility module
 const socketUtil = require('./utils/socket');
 
+// Import database setup
+const { setupDatabase } = require('./utils/setupDatabase');
+// Setup database
+setupDatabase();
+
 // Create Express app
 const app = express();
 const server = http.createServer(app);
@@ -90,6 +95,10 @@ app.post('/api/stocks/:id/event', (req, res) => {
 
     simulation.applyManualEvent(id, parseFloat(value), message);
     res.json({ message: `Event applied to stock ID ${id}` });
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Socket.io events
