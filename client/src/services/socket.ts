@@ -4,14 +4,29 @@ import { StockUpdate, StockEvent, SimulationStatus } from '../types';
 // Use the same API URL for socket connection
 const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
+const sanitizeUrl = (url: string): string => {
+            try {
+                const parsedUrl = new URL(url);
+                return `${parsedUrl.protocol}//${parsedUrl.host}`;
+            } catch (e) {
+                console.warn('Failed to parse socket URL, using as-is:', url);
+                return url;
+            }
+        };
+
 class SocketService {
     private socket: Socket | null = null;
     private listeners: { [event: string]: Function[] } = {};
 
+
     connect() {
         if (this.socket) return;
 
-        this.socket = io(SOCKET_URL.split("/").slice(0, -1).join("/"), {
+        // Sanitize socket URL to only include protocol and domain
+        
+        const sanitizedUrl = sanitizeUrl(SOCKET_URL);
+        
+        this.socket = io(sanitizedUrl, {
             transports: ['websocket'],
             autoConnect: true,
             reconnectionAttempts: 5,
