@@ -75,7 +75,7 @@ class Stock {
         if (granularity <= 1) {
             // If granularity is 1 or less, return all points up to the limit
             return db.prepare(`
-                SELECT price, datetime(strftime('%s',timestamp), 'unixepoch', 'localtime') as timestamp 
+                SELECT price, timestamp 
                 FROM stock_history 
                 WHERE stock_id = ? 
                 ORDER BY timestamp DESC 
@@ -87,7 +87,7 @@ class Stock {
                 WITH numbered AS (
                     SELECT 
                         price, 
-                        datetime(strftime('%s',timestamp), 'unixepoch', 'localtime') as timestamp,
+                        timestamp,
                         ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY timestamp DESC) as row_num
                     FROM stock_history
                     WHERE stock_id = ?

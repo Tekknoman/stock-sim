@@ -119,10 +119,16 @@ const getSimulationInterval = (): number => {
 const normalizePriceHistoryPoint = (point: any, stockId: number): PriceHistoryPoint => {
     // Format from API: { price: 3.42, timestamp: "2025-05-01 07:20:06", ... }
     if (point.price !== undefined && point.timestamp !== undefined) {
+        // Convert UTC timestamp from backend to local timezone
+        const utcTimestamp = new Date(point.timestamp);
+        const localTimestamp = new Date(
+            utcTimestamp.getTime() - utcTimestamp.getTimezoneOffset() * 60000
+        ).toISOString();
+        
         return {
             stock_id: stockId,
             price: point.price,
-            timestamp: point.timestamp
+            timestamp: localTimestamp
         };
     }
     
