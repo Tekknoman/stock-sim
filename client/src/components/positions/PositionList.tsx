@@ -126,9 +126,17 @@ const PositionList: React.FC<PositionListProps> = ({
       )}
       {userPositions.map((position) => {
         const stock = stocks.find((s) => s.id === position.stock_id);
-        const currentPrice = stock?.current_price || position.open_price; // Fallback to open_price if stock not found yet
-        const profitLoss =
-          (currentPrice - position.open_price) * position.amount;
+        const currentPrice = position.is_open
+          ? stock?.current_price || position.open_price
+          : position.close_price || position.open_price;
+
+        // Calculate profit/loss based on position status
+        const profitLoss = position.is_open
+          ? (currentPrice - position.open_price) * position.amount // Live P/L for open positions
+          : ((position.close_price || position.open_price) -
+              position.open_price) *
+            position.amount; // Realized P/L for closed positions
+
         const profitLossPercent =
           position.open_price !== 0
             ? (profitLoss / (position.open_price * position.amount)) * 100
@@ -154,9 +162,26 @@ const PositionList: React.FC<PositionListProps> = ({
               <span className="text-right">
                 ${position.open_price.toFixed(2)}
               </span>
-              <span>Current Price:</span>
-              <span className="text-right">${currentPrice.toFixed(2)}</span>
-              <span className="font-medium">Total P/L:</span>
+
+              {position.is_open ? (
+                // Open position shows current market price
+                <>
+                  <span>Current Price:</span>
+                  <span className="text-right">${currentPrice.toFixed(2)}</span>
+                </>
+              ) : (
+                // Closed position shows actual close price
+                <>
+                  <span>Sold Price:</span>
+                  <span className="text-right">
+                    ${(position.close_price || position.open_price).toFixed(2)}
+                  </span>
+                </>
+              )}
+
+              <span className="font-medium">
+                {position.is_open ? "Unrealized P/L:" : "Realized P/L:"}
+              </span>
               <span
                 className={`text-right font-medium ${
                   profitLoss >= 0 ? "text-stock-up" : "text-stock-down"
@@ -178,8 +203,16 @@ const PositionList: React.FC<PositionListProps> = ({
               </button>
             )}
             {!position.is_open && position.close_price && (
-              <div className="text-xs mt-1 border-t border-dark-100 pt-1">
-                Closed at: ${position.close_price.toFixed(2)}
+              <div className="text-xs mt-1 border-t border-dark-100 pt-1 flex justify-between">
+                <span>Sold at: ${position.close_price.toFixed(2)}</span>
+                <span
+                  className={
+                    profitLoss >= 0 ? "text-stock-up" : "text-stock-down"
+                  }
+                >
+                  Total payout: $
+                  {(position.amount * (position.close_price || 0)).toFixed(2)}
+                </span>
               </div>
             )}
           </div>

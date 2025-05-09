@@ -163,7 +163,9 @@ function App() {
                         addTransaction(
                           `Bought ${position.amount} shares of ${
                             position.stock_name
-                          } at $${position.open_price.toFixed(2)}`,
+                          } for $${(
+                            position.open_price * position.amount
+                          ).toFixed(2)}`,
                           "buy"
                         );
                       }
@@ -182,7 +184,7 @@ function App() {
                         addTransaction(
                           `Sold ${position.amount} shares of ${
                             position.stock_name
-                          } at $${price.toFixed(2)}`,
+                          } for $${(price * position.amount).toFixed(2)}`,
                           "sell"
                         );
                       }}

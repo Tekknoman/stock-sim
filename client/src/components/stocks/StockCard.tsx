@@ -159,8 +159,12 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
       const profit =
         (stock.current_price - sellingPosition.open_price) *
         sellingPosition.amount;
+      const totalPayout = stock.current_price * sellingPosition.amount;
+
       setSellSuccess(
-        `Sold ${sellingPosition.amount} shares for ${profit.toFixed(2)} profit`
+        `Sold ${sellingPosition.amount} shares for $${totalPayout.toFixed(
+          2
+        )} (${profit >= 0 ? "+" : ""}$${profit.toFixed(2)} profit)`
       );
 
       // No need to manually refresh here - the WebSocket will handle it
@@ -318,6 +322,10 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
                     (stock.current_price - sellingPosition.open_price) *
                     sellingPosition.amount
                   ).toFixed(2)}
+                </span>
+                <span className="font-bold">Total payout:</span>
+                <span className="font-bold">
+                  ${(stock.current_price * sellingPosition.amount).toFixed(2)}
                 </span>
               </div>
             </div>
