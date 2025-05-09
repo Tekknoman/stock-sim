@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Position } from '../../types';
-import usePositionStore from '../../store/positionStore';
-import useUserStore from '../../store/userStore';
-import useStockStore from '../../store/stockStore';
-import socketService from '../../services/socket';
+import React, { useState, useEffect, useMemo } from "react";
+import { Position } from "../../types";
+import usePositionStore from "../../store/positionStore";
+import useUserStore from "../../store/userStore";
+import useStockStore from "../../store/stockStore";
 
 interface PositionListProps {
   userId?: number;
@@ -11,46 +10,46 @@ interface PositionListProps {
   onSellPosition?: (position: Position, price: number) => void;
 }
 
-const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, onSellPosition }) => {
-  const { userPositions, fetchUserPositions } = useUserStore();
+const PositionList: React.FC<PositionListProps> = ({
+  userId,
+  onlyOpen = true,
+  onSellPosition,
+}) => {
+  const {
+    positions: allPositions,
+    closePosition,
+    fetchPositions,
+    loading: positionsLoading,
+  } = usePositionStore();
+  const { selectedUser } = useUserStore();
   const { stocks } = useStockStore();
-  const { closePosition } = usePositionStore();
-  const [closingPositionId, setClosingPositionId] = useState<number | null>(null);
+  const [closingPositionId, setClosingPositionId] = useState<number | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // Filter positions based on props
-  const positions = userPositions.filter(pos => {
-    if (onlyOpen && !pos.is_open) return false;
-    return true;
-  });
+  const targetUserId = userId || selectedUser?.id;
 
-  // Set up real-time updates
+  const userPositions = useMemo(() => {
+    if (!targetUserId) return [];
+    return allPositions.filter((pos) => {
+      if (pos.user_id !== targetUserId) return false;
+      if (onlyOpen && !pos.is_open) return false;
+      return true;
+    });
+  }, [allPositions, targetUserId, onlyOpen]);
+
   useEffect(() => {
-    socketService.connect();
-    
-    // Update positions when prices change
-    const handlePriceUpdate = () => {
-      if (!userId) return;
-      fetchUserPositions(userId);
-      setLastUpdate(new Date());
-    };
-
-    socketService.onPriceUpdate(handlePriceUpdate);
-    
-    // Set up periodic refresh (every 30 seconds)
-    const refreshInterval = setInterval(() => {
-      if (!userId) return;
-      fetchUserPositions(userId);
-      setLastUpdate(new Date());
-    }, 30000);
-    
-    return () => {
-      socketService.removeListener('prices:update', handlePriceUpdate);
-      clearInterval(refreshInterval);
-    };
-  }, [fetchUserPositions]);
+    // If displaying for a specific user and their positions might not be in the initial allPositions load,
+    // or if allPositions is empty, consider fetching.
+    // However, App.tsx should ideally handle the initial population of allPositions.
+    if (targetUserId && allPositions.length === 0 && !positionsLoading) {
+      // fetchPositions(); // This fetches ALL positions.
+      // If userStore had a fetchUserPositions that updates allPositions or a dedicated user-specific list, that might be better.
+      // For now, relying on App.tsx or a parent component to have called fetchPositions.
+    }
+  }, [targetUserId, allPositions.length, fetchPositions, positionsLoading]);
 
   const handleClosePosition = async (position: Position) => {
     if (!position.is_open) return;
@@ -60,126 +59,141 @@ const PositionList: React.FC<PositionListProps> = ({ userId, onlyOpen = true, on
     setSuccess(null);
 
     try {
-      await closePosition(position.id);
-      
-      // Get current price from stocks
-      const stock = stocks.find(s => s.id === position.stock_id);
-      const currentPrice = stock?.current_price || position.close_price || 0;
-      
-      setSuccess(`Successfully sold ${position.amount} shares of ${position.stock_name}`);
-      
-      // Force refresh the position list
-      userId && await fetchUserPositions(userId);
+      await closePosition(position.id); // This will trigger WebSocket update handled by positionStore
 
-      // Call callback if provided
+      const stock = stocks.find((s) => s.id === position.stock_id);
+      const currentPrice = stock?.current_price || position.close_price || 0;
+
+      setSuccess(
+        `Successfully sold ${position.amount} shares of ${position.stock_name}`
+      );
+      setTimeout(() => setSuccess(null), 3000); // Clear success message
+
       if (onSellPosition) {
         onSellPosition(position, currentPrice);
       }
     } catch (err) {
-      console.error('Error closing position:', err);
-      setError('Failed to close position');
+      console.error("Error closing position:", err);
+      setError("Failed to close position. Please try again.");
+      setTimeout(() => setError(null), 3000); // Clear error message
     } finally {
       setClosingPositionId(null);
     }
   };
 
-  if (positions.length === 0) {
+  if (positionsLoading && userPositions.length === 0) {
+    return <div className="text-center p-4">Loading positions...</div>;
+  }
+
+  if (!targetUserId) {
     return (
-      <div className="bg-dark-300 p-6 rounded-lg text-center">
-        <p className="text-gray-400">No positions found</p>
+      <div className="bg-dark-300 p-6 rounded text-center">
+        <p className="text-gray-400">
+          Select a trader to view their positions.
+        </p>
+      </div>
+    );
+  }
+
+  if (userPositions.length === 0) {
+    return (
+      <div className="bg-dark-300 p-6 rounded text-center">
+        <p className="text-gray-400">No positions to display.</p>
+        <button
+          onClick={() => {
+            fetchPositions();
+          }}
+          className="text-xs bg-dark-100 hover:bg-dark-200 px-2 py-1 rounded mt-2"
+          disabled={positionsLoading}
+        >
+          {positionsLoading ? "Refreshing..." : "Refresh Positions"}
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="bg-dark-300 p-6 rounded-lg">
+    <div className="space-y-3">
       {error && (
-        <div className="bg-red-900/30 border border-red-800 rounded p-3 mb-4 text-red-200">
+        <div className="text-red-500 text-sm text-center p-2 bg-red-900/30 rounded">
           {error}
         </div>
       )}
-
       {success && (
-        <div className="bg-green-900/30 border border-green-800 rounded p-3 mb-4 text-green-200">
+        <div className="text-green-500 text-sm text-center p-2 bg-green-900/30 rounded">
           {success}
         </div>
       )}
+      {userPositions.map((position) => {
+        const stock = stocks.find((s) => s.id === position.stock_id);
+        const currentPrice = stock?.current_price || position.open_price; // Fallback to open_price if stock not found yet
+        const profitLoss =
+          (currentPrice - position.open_price) * position.amount;
+        const profitLossPercent =
+          position.open_price !== 0
+            ? (profitLoss / (position.open_price * position.amount)) * 100
+            : 0;
 
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-medium">Open Positions</h3>
-        <div className="flex items-center">
-          <span className="text-xs text-gray-400 mr-2">
-            Last updated: {lastUpdate.toLocaleTimeString()}
-          </span>
-          <button 
-            onClick={() => {
-              if (!userId) return;
-              fetchUserPositions(userId);
-              setLastUpdate(new Date());
-            }}
-            className="text-xs bg-dark-100 hover:bg-dark-200 px-2 py-1 rounded"
-            title="Refresh positions"
+        return (
+          <div
+            key={position.id}
+            className={`p-3 rounded-lg shadow transition-all duration-300 ease-in-out ${
+              position.is_open ? "bg-dark-200" : "bg-dark-100 opacity-60"
+            }`}
           >
-            ↻
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="border-b border-dark-100">
-            <tr>
-              <th className="pb-2 text-left">Stock</th>
-              <th className="pb-2 text-right">Shares</th>
-              <th className="pb-2 text-right">Bought At</th>
-              <th className="pb-2 text-right">Current</th>
-              <th className="pb-2 text-right">P/L</th>
-              <th className="pb-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {positions.map(position => {
-              const currentPrice = position.current_price || 0;
-              const boughtPrice = position.open_price;
-              const profitLoss = position.profit_loss || (currentPrice - boughtPrice) * position.amount;
-              const profitLossPercent = ((currentPrice - boughtPrice) / boughtPrice) * 100;
-              
-              const isPositive = profitLoss >= 0;
-              
-              return (
-                <tr key={position.id} className="border-b border-dark-100 hover:bg-dark-200">
-                  <td className="py-3 text-left">
-                    <div className="font-medium">{position.stock_name}</div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(position.created_at).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="py-3 text-right">{position.amount}</td>
-                  <td className="py-3 text-right">${boughtPrice.toFixed(2)}</td>
-                  <td className="py-3 text-right">${currentPrice.toFixed(2)}</td>
-                  <td className={`py-3 text-right ${isPositive ? 'text-stock-up' : 'text-stock-down'}`}>
-                    <div>{isPositive && '+'}{profitLoss.toFixed(2)}</div>
-                    <div className="text-xs">({isPositive && '+'}{profitLossPercent.toFixed(2)}%)</div>
-                  </td>
-                  <td className="py-3 text-right">
-                    {position.is_open ? (
-                      <button
-                        className="bg-dark-100 hover:bg-dark-100/60 px-3 py-1 rounded text-sm transition-colors"
-                        onClick={() => handleClosePosition(position)}
-                        disabled={closingPositionId === position.id}
-                      >
-                        {closingPositionId === position.id ? 'Selling...' : 'Sell'}
-                      </button>
-                    ) : (
-                      <span className="text-xs px-2 py-1 bg-dark-400 rounded">Closed</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="font-bold text-primary-300">
+                {position.stock_name || stock?.name || "Unknown Stock"}
+              </span>
+              <span className="text-xs text-gray-400">
+                {position.amount} shares
+              </span>
+            </div>
+            <div className="text-xs grid grid-cols-2 gap-x-2 gap-y-1 mb-2">
+              <span>Avg. Open Price:</span>
+              <span className="text-right">
+                ${position.open_price.toFixed(2)}
+              </span>
+              <span>Current Price:</span>
+              <span className="text-right">${currentPrice.toFixed(2)}</span>
+              <span className="font-medium">Total P/L:</span>
+              <span
+                className={`text-right font-medium ${
+                  profitLoss >= 0 ? "text-stock-up" : "text-stock-down"
+                }`}
+              >
+                {profitLoss >= 0 ? "+" : ""}${profitLoss.toFixed(2)} (
+                {profitLossPercent.toFixed(2)}%)
+              </span>
+            </div>
+            {position.is_open && (
+              <button
+                onClick={() => handleClosePosition(position)}
+                disabled={closingPositionId === position.id}
+                className="w-full mt-1 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 rounded transition-colors disabled:opacity-50"
+              >
+                {closingPositionId === position.id
+                  ? "Selling..."
+                  : "Sell Position"}
+              </button>
+            )}
+            {!position.is_open && position.close_price && (
+              <div className="text-xs mt-1 border-t border-dark-100 pt-1">
+                Closed at: ${position.close_price.toFixed(2)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button
+        onClick={() => {
+          fetchPositions();
+        }}
+        className="w-full text-xs bg-dark-100 hover:bg-dark-200 px-2 py-1 rounded mt-2"
+        disabled={positionsLoading}
+      >
+        {positionsLoading ? "Refreshing..." : "Refresh All Positions"}
+      </button>
     </div>
   );
 };

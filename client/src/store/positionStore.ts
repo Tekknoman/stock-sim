@@ -100,25 +100,41 @@ const usePositionStore = create<PositionState>((set, get) => ({
     
     setupSocketListeners: () => {
         // Setup the socket listener for position updates
-        const handlePositionUpdate = (data: { action: 'create' | 'close', stockId: number, position: any }) => {
+        const handlePositionUpdate = (data: { action: 'create' | 'close', stockId: number, position: Position }) => {
             const { action, stockId, position } = data;
             
             // Update cached positions for the affected stock
-            if (get().stockPositions[stockId]) {
-                const currentPositions = [...get().stockPositions[stockId]];
-                
-                if (action === 'close') {
-                    // Remove the closed position
-                    const updatedPositions = currentPositions.filter(p => p.id !== position.id);
-                    get().updateStockPositionsCache(stockId, updatedPositions);
-                } else if (action === 'create') {
-                    // Add the new position
-                    get().updateStockPositionsCache(stockId, [...currentPositions, position]);
+            set(state => {
+                const newStockPositions = { ...state.stockPositions };
+                if (newStockPositions[stockId]) {
+                    if (action === 'close') {
+                        newStockPositions[stockId] = newStockPositions[stockId].filter(p => p.id !== position.id);
+                    } else if (action === 'create') {
+                        // Avoid duplicates in cache
+                        if (!newStockPositions[stockId].find(p => p.id === position.id)) {
+                            newStockPositions[stockId] = [...newStockPositions[stockId], position];
+                        } else {
+                            // Optionally update if already exists, though 'create' implies new
+                            newStockPositions[stockId] = newStockPositions[stockId].map(p => p.id === position.id ? position : p);
+                        }
+                    }
                 }
-            }
-            
-            // Also update the main positions array
-            get().fetchPositions();
+
+                // Update the main positions array directly
+                let newPositions = [...state.positions];
+                if (action === 'close') {
+                    newPositions = newPositions.filter(p => p.id !== position.id);
+                } else if (action === 'create') {
+                    // Avoid duplicates in main list
+                    if (!newPositions.find(p => p.id === position.id)) {
+                        newPositions.push(position);
+                    } else {
+                         // Optionally update if already exists
+                        newPositions = newPositions.map(p => p.id === position.id ? position : p);
+                    }
+                }
+                return { ...state, positions: newPositions, stockPositions: newStockPositions, loading: false, error: null };
+            });
         };
         
         // Register the listener

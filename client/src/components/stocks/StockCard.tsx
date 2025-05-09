@@ -104,14 +104,14 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   // Filter user positions for this stock
   useEffect(() => {
     if (selectedUser) {
-      const positions = allUserPositions.filter(
+      const positions = stockPositions.filter(
         (p) => p.stock_id === stock.id && p.is_open
       );
       setUserPositions(positions);
     } else {
       setUserPositions([]);
     }
-  }, [selectedUser, allUserPositions, stock.id]);
+  }, [selectedUser, stockPositions, stock.id]);
 
   // Get trend indicator
   const getTrendIndicator = () => {

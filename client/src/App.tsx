@@ -32,10 +32,10 @@ function App() {
     fetchUsers();
   }, [fetchUsers]);
 
-    useEffect(() => {
+  useEffect(() => {
     // Connect to socket.io
     socketService.connect();
-        // Clean up
+    // Clean up
     return () => {
       socketService.disconnect();
     };
