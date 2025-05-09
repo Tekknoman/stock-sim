@@ -53,6 +53,18 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
     [stock.id, stockHistories]
   );
 
+  // Calculate earliest price in the timespan for percentage calculations
+  const earliestPrice = useMemo(() => {
+    if (priceHistory.length > 0) {
+      const sortedHistory = [...priceHistory].sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      return sortedHistory[0].price;
+    }
+    return stock.base_value; // Fallback to base value if no history
+  }, [priceHistory, stock.base_value]);
+
   // Load chart data from central store instead of fetching directly
   useEffect(() => {
     // Get the history if we don't already have it
@@ -72,12 +84,12 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
     timeSpan,
   ]);
 
-  // Calculate price change
+  // Calculate price change based on timespan rather than base value
   useEffect(() => {
-    const change = stock.current_price - stock.base_value;
-    const percentChange = (change / stock.base_value) * 100;
+    const change = stock.current_price - earliestPrice;
+    const percentChange = (change / earliestPrice) * 100;
     setPriceChange({ value: change, percent: percentChange });
-  }, [stock.current_price, stock.base_value]);
+  }, [stock.current_price, earliestPrice]);
 
   // Set up WebSocket listeners for position updates and initial data load
   useEffect(() => {
@@ -224,6 +236,25 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
   }, [priceHistory]);
+
+  // Format last trade time
+  const getLastTradeTime = () => {
+    if (!stock.last_trade_time) return "No recent trades";
+
+    const lastTrade = new Date(stock.last_trade_time);
+    const now = new Date();
+    const diffMs = now.getTime() - lastTrade.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   // Custom tooltip for the chart that shows position values
   const CustomTooltip = ({ active, payload }: any) => {
@@ -505,9 +536,11 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
 
       {isExpanded && !onClick && (
         <div className="mt-2 pt-2 border-t border-dark-100">
-          <div className="flex justify-between text-sm text-gray-300">
+          <div className="grid grid-cols-2 text-sm text-gray-300 gap-1">
             <div>Volatility: {stock.volatility}</div>
             <div>Base value: ${stock.base_value.toFixed(2)}</div>
+            <div>Trading Volume: {stock.trade_volume || 0}</div>
+            <div>Last Trade: {getLastTradeTime()}</div>
           </div>
 
           {stockPositions.length > 0 && (

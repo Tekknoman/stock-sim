@@ -8,6 +8,8 @@ export interface Stock {
     current_price: number;
     buff_value: number;
     max_value: number | null;
+    trade_volume: number;
+    last_trade_time: string | null;
     created_at: string;
 }
 

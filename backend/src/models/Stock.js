@@ -124,18 +124,18 @@ class Stock {
         `);
         return stmt.run(now, amount, id);
     }
-    
+
     // Get trading activity info for a stock
     static getTradingActivity(id) {
         const stock = this.getById(id);
         if (!stock) return null;
-        
+
         return {
             lastTradeTime: stock.last_trade_time ? new Date(stock.last_trade_time) : null,
             tradeVolume: stock.trade_volume || 0
         };
     }
-    
+
     // Reset trading volume for all stocks (e.g., for daily reset)
     static resetTradingVolumes() {
         const stmt = db.prepare(`UPDATE stocks SET trade_volume = 0`);

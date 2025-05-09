@@ -12,7 +12,7 @@ class SimulationEngine {
             'Medium': 0.03, // 3% max change
             'High': 0.08   // 8% max change
         };
-        
+
         // Record last trading activity check time to optimize performance
         this.lastVolumeReset = new Date();
     }
@@ -83,34 +83,35 @@ class SimulationEngine {
             console.error('Error updating simulation interval:', error);
         }
     }
-    
+
     // Calculate volume decay factor based on time since last trade
     calculateVolumeDecayFactor(stockId) {
         const activity = Stock.getTradingActivity(stockId);
-        
+
         // If no trading activity recorded or no last trade time, use a default moderate decay
         if (!activity || !activity.lastTradeTime) {
             return 0.002; // Default decay rate
         }
-        
+
         // Get decay settings
         const decayRate = parseFloat(Settings.get('volume_decay_rate') || '0.002');
-        const decayThresholdHours = parseFloat(Settings.get('volume_decay_threshold') || '24');
-        
-        // Calculate hours since last trade
+        const decayThresholdMinutes = parseFloat(Settings.get('volume_decay_threshold') || '60');
+
+        // Calculate minutes since last trade
         const now = new Date();
-        const hoursSinceLastTrade = (now.getTime() - activity.lastTradeTime.getTime()) / (1000 * 60 * 60);
-        
+        const minutesSinceLastTrade = (now.getTime() - activity.lastTradeTime.getTime()) / (1000 * 60);
+
         // No decay if recent trading activity
-        if (hoursSinceLastTrade < decayThresholdHours) {
+        if (minutesSinceLastTrade < decayThresholdMinutes) {
             return 0;
         }
-        
+
         // Calculate exponential decay factor based on how long since last trade
-        // More time = stronger decay; formula: base_rate * e^((hours - threshold)/24)
-        const exponent = (hoursSinceLastTrade - decayThresholdHours) / 24;
+        // More time = stronger decay; formula: base_rate * e^((minutes - threshold)/(24*60))
+        // Dividing by 1440 (24*60) to keep the same scale as before when using hours
+        const exponent = (minutesSinceLastTrade - decayThresholdMinutes) / 1440;
         const decayFactor = decayRate * Math.exp(exponent);
-        
+
         // Cap the decay factor to prevent extreme drops
         return Math.min(decayFactor, 0.05);
     }
@@ -122,10 +123,10 @@ class SimulationEngine {
             const demandImpactWeight = parseFloat(Settings.get('demand_impact_weight') || '0.1');
             const randomEventChance = parseFloat(Settings.get('random_event_chance') || '0.05');
             const randomEventImpact = parseFloat(Settings.get('random_event_impact') || '0.1');
-            
+
             // Reset trading volumes daily to prevent accumulated volume from masking inactivity
             const now = new Date();
-            if (now.getDate() !== this.lastVolumeReset.getDate() || 
+            if (now.getDate() !== this.lastVolumeReset.getDate() ||
                 now.getMonth() !== this.lastVolumeReset.getMonth() ||
                 now.getFullYear() !== this.lastVolumeReset.getFullYear()) {
                 Stock.resetTradingVolumes();
@@ -154,7 +155,7 @@ class SimulationEngine {
                 // Calculate volume decay based on trading activity
                 const decayFactor = this.calculateVolumeDecayFactor(stock.id);
                 const volumeDecay = -decayFactor * stock.current_price;
-                
+
                 // Volume decay message for significant decay
                 let volumeDecayEvent = null;
                 if (Math.abs(volumeDecay) > stock.current_price * 0.01) {
@@ -193,7 +194,7 @@ class SimulationEngine {
                 // Calculate new price, ensuring it doesn't go negative
                 let newPrice = stock.current_price + baseChange + demandImpact + buffValue + eventImpact + maxValueCorrection + volumeDecay;
                 newPrice = Math.max(0.01, newPrice); // Minimum price of 0.01
-                
+
                 // If there's a max value and the price still exceeds it (perhaps due to large positive factors),
                 // cap the price at the max value
                 if (stock.max_value && newPrice > stock.max_value) {

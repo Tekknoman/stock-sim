@@ -76,7 +76,7 @@ function setupDatabase() {
     ['random_event_chance', '0.05'],   // probability of random events
     ['random_event_impact', '0.1'],    // maximum impact of random events
     ['volume_decay_rate', '0.002'],    // rate at which inactive stocks decay per interval
-    ['volume_decay_threshold', '24']   // hours of inactivity before decay starts
+    ['volume_decay_threshold', '60']   // minutes of inactivity before decay starts (changed from hours)
   ];
 
   settings.forEach(setting => settingsStmt.run(setting[0], setting[1]));
