@@ -443,7 +443,7 @@ const useStockStore = create<StockState>((set, get) => ({
     },
 
     setupWebSocketListeners: () => {
-        socketService.connect();
+        // socketService.connect(); // Removed: Connection is managed by App.tsx
         
         // Set up a real-time listener for price updates
         const handlePriceUpdate = (updates: StockUpdate[]) => {

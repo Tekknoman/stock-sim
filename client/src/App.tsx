@@ -8,12 +8,14 @@ import Admin from "./components/layout/Admin";
 import Modal from "./components/layout/Modal";
 import useUserStore from "./store/userStore";
 import usePositionStore from "./store/positionStore";
+import useStockStore from "./store/stockStore"; // Import useStockStore
 import socketService from "./services/socket";
 import { User } from "./types";
 
 function App() {
   const { users, selectedUser, selectUser, fetchUsers } = useUserStore();
-  const { setupSocketListeners } = usePositionStore();
+  const { setupSocketListeners: setupPositionListeners } = usePositionStore(); // Renamed for clarity
+  const { setupWebSocketListeners: setupStockListeners } = useStockStore(); // Get stock listener setup
   const [tradingSidebarOpen, setTradingSidebarOpen] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"buy" | "positions">("buy");
@@ -42,13 +44,16 @@ function App() {
   // Initialize socket connection and set up listeners
   useEffect(() => {
     // Set up position update listeners
-    const cleanupPositionListeners = setupSocketListeners();
+    const cleanupPositionListeners = setupPositionListeners();
+    // Set up stock update listeners
+    const cleanupStockListeners = setupStockListeners();
 
     // Clean up on unmount
     return () => {
       cleanupPositionListeners();
+      cleanupStockListeners();
     };
-  }, [setupSocketListeners]);
+  }, [setupPositionListeners, setupStockListeners]);
 
   // Function to add transaction to history
   const addTransaction = (message: string, type: "buy" | "sell") => {

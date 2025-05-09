@@ -104,45 +104,6 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
     };
   }, [stockId, autoRefresh, setupWebSocketListeners]);
 
-  // Calculate domain for X-axis based on the timespan
-  useEffect(() => {
-    if (chartData.length === 0) setCurrentDomain(["auto", "auto"]);
-
-    // For "all" timespan, use the data's min/max
-    if (timeSpan === "all") {
-      const minTimestamp = chartData[0]?.timestamp || "auto";
-      const maxTimestamp = chartData[chartData.length - 1]?.timestamp || "auto";
-      setCurrentDomain([minTimestamp, maxTimestamp]);
-    }
-
-    // For other timespans, calculate based on current time
-    const now = new Date();
-
-    const cutoffTime = new Date();
-    switch (timeSpan) {
-      case "1m":
-        cutoffTime.setMinutes(cutoffTime.getMinutes() - 1);
-        break;
-      case "5m":
-        cutoffTime.setMinutes(cutoffTime.getMinutes() - 5);
-        break;
-      case "15m":
-        cutoffTime.setMinutes(cutoffTime.getMinutes() - 15);
-        break;
-      case "30m":
-        cutoffTime.setMinutes(cutoffTime.getMinutes() - 30);
-        break;
-      case "1h":
-        cutoffTime.setHours(cutoffTime.getHours() - 1);
-        break;
-    }
-    // Format timestamps for domain
-    const minTimestamp = formatTimestamp(cutoffTime.toString());
-    const maxTimestamp = formatTimestamp(now.toString());
-
-    setCurrentDomain([minTimestamp, maxTimestamp]);
-  }, [timeSpan, chartData]);
-
   if (!stock) {
     return (
       <div className="bg-dark-300 p-6 rounded-lg">

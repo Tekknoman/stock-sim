@@ -10,7 +10,6 @@ import {
 import usePositionStore from "../../store/positionStore";
 import useStockStore from "../../store/stockStore";
 import useUserStore from "../../store/userStore";
-import socketService from "../../services/socket";
 import UserChip from "../users/UserChip";
 
 interface StockCardProps {
