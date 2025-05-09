@@ -2,8 +2,8 @@ const db = require('./db');
 
 // Create tables if they don't exist
 function setupDatabase() {
-    // Stocks table
-    db.exec(`
+  // Stocks table
+  db.exec(`
     CREATE TABLE IF NOT EXISTS stocks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -13,12 +13,15 @@ function setupDatabase() {
       base_value REAL NOT NULL,
       current_price REAL NOT NULL,
       buff_value REAL DEFAULT 0,
+      max_value REAL,
+      last_trade_time TIMESTAMP,
+      trade_volume INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-    // Users table
-    db.exec(`
+  // Users table
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -27,8 +30,8 @@ function setupDatabase() {
     );
   `);
 
-    // Positions table
-    db.exec(`
+  // Positions table
+  db.exec(`
     CREATE TABLE IF NOT EXISTS positions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       stock_id INTEGER NOT NULL,
@@ -44,8 +47,8 @@ function setupDatabase() {
     );
   `);
 
-    // Stock price history table
-    db.exec(`
+  // Stock price history table
+  db.exec(`
     CREATE TABLE IF NOT EXISTS stock_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       stock_id INTEGER NOT NULL,
@@ -55,8 +58,8 @@ function setupDatabase() {
     );
   `);
 
-    // Game settings table
-    db.exec(`
+  // Game settings table
+  db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       key TEXT UNIQUE NOT NULL,
@@ -64,19 +67,21 @@ function setupDatabase() {
     );
   `);
 
-    // Insert default settings if they don't exist
-    const settingsStmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
-    const settings = [
-        ['simulation_interval', '5000'],   // milliseconds between price updates
-        ['simulation_active', 'false'],    // whether the simulation is currently running
-        ['demand_impact_weight', '0.1'],   // how much demand affects price
-        ['random_event_chance', '0.05'],   // probability of random events
-        ['random_event_impact', '0.1']     // maximum impact of random events
-    ];
+  // Insert default settings if they don't exist
+  const settingsStmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
+  const settings = [
+    ['simulation_interval', '5000'],   // milliseconds between price updates
+    ['simulation_active', 'false'],    // whether the simulation is currently running
+    ['demand_impact_weight', '0.1'],   // how much demand affects price
+    ['random_event_chance', '0.05'],   // probability of random events
+    ['random_event_impact', '0.1'],    // maximum impact of random events
+    ['volume_decay_rate', '0.002'],    // rate at which inactive stocks decay per interval
+    ['volume_decay_threshold', '24']   // hours of inactivity before decay starts
+  ];
 
-    settings.forEach(setting => settingsStmt.run(setting[0], setting[1]));
+  settings.forEach(setting => settingsStmt.run(setting[0], setting[1]));
 
-    console.log('Database setup complete!');
+  console.log('Database setup complete!');
 }
 
 // Run setup

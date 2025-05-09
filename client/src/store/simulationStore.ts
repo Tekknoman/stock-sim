@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { SimulationStatus, AppSettings } from '../types';
 import * as api from '../services/api';
+import socketService from '../services/socket';
 
 interface SimulationState {
     status: SimulationStatus;
-    settings: AppSettings;
+    settings: AppSettings | null;
     loading: boolean;
     error: string | null;
     fetchStatus: () => Promise<void>;
@@ -13,6 +14,7 @@ interface SimulationState {
     stopSimulation: () => Promise<void>;
     updateInterval: (interval: number) => Promise<void>;
     updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
+    setupSocketListeners: () => () => void; // setup + cleanup function
 }
 
 const useSimulationStore = create<SimulationState>((set, get) => ({
@@ -22,7 +24,10 @@ const useSimulationStore = create<SimulationState>((set, get) => ({
         simulation_active: 'false',
         demand_impact_weight: '0.1',
         random_event_chance: '0.05',
-        random_event_impact: '0.1'
+        random_event_impact: '0.1',
+        volume_decay_rate: '0.1',
+        volume_decay_threshold: '0.1',
+  
     },
     loading: false,
     error: null,
@@ -98,14 +103,34 @@ const useSimulationStore = create<SimulationState>((set, get) => ({
         set({ loading: true, error: null });
         try {
             await api.updateMultipleSettings(newSettings);
-            set(state => ({
-                settings: { ...state.settings, ...newSettings },
-                loading: false
-            }));
+            
+            // Fetch updated settings rather than trying to merge them directly
+            // This ensures we have the complete and correct state
+            await get().fetchSettings();
+            
+            set({ loading: false });
         } catch (error) {
             console.error('Error updating settings:', error);
             set({ error: 'Failed to update settings', loading: false });
         }
+    },
+
+    setupSocketListeners: () => {
+        socketService.connect();
+
+        socketService.onSimulationState(state => {
+            set(current => ({
+                status: {
+                    ...current.status,
+                    isRunning: state.active
+                }
+            }));
+        });
+
+        // Return cleanup function
+        return () => {
+            socketService.removeListener('simulation:state', () => {});
+        };
     }
 }));
 

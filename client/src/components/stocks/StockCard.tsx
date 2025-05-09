@@ -105,7 +105,8 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
   useEffect(() => {
     if (selectedUser) {
       const positions = stockPositions.filter(
-        (p) => p.stock_id === stock.id && p.is_open
+        (p) =>
+          p.stock_id === stock.id && p.is_open && p.user_id === selectedUser.id
       );
       setUserPositions(positions);
     } else {
@@ -132,6 +133,21 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick, className }) => {
     // Buff/nerf active indicator
     if (stock.buff_value !== 0) {
       indicators.push("🔧");
+    }
+
+    // Max value indicator
+    if (stock.max_value !== null) {
+      const percentOfMax = (stock.current_price / stock.max_value) * 100;
+      if (percentOfMax >= 99) {
+        // At or very near max value
+        indicators.push("🔴");
+      } else if (percentOfMax >= 90) {
+        // Approaching max value
+        indicators.push("🟠");
+      } else if (percentOfMax >= 75) {
+        // Within range of max value
+        indicators.push("🟡");
+      }
     }
 
     return indicators;

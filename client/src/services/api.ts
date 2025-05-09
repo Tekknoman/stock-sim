@@ -20,6 +20,16 @@ export const getStockHistory = (id: number, limit?: number, granularity?: number
 export const getStockLeaderboard = (id: number) => api.get<Position[]>(`/stocks/${id}/leaderboard`);
 export const applyStockEvent = (id: number, value: number, message?: string) => api.post<{ message: string }>(`/stocks/${id}/event`, { value, message });
 
+// Set max value for a stock
+export const setStockMaxValue = (stockId: number, maxValue: number) => {
+  return axios.post(`/api/stocks/${stockId}/max-value`, { maxValue });
+};
+
+// Manually set current price for a stock
+export const setStockPrice = (stockId: number, price: number) => {
+  return axios.post(`/api/stocks/${stockId}/set-price`, { price });
+};
+
 // User API calls
 export const getUsers = () => api.get<User[]>('/users');
 export const getUser = (id: number) => api.get<User>(`/users/${id}`);

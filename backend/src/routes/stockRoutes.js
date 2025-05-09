@@ -52,4 +52,10 @@ router.put('/:id', stockController.updateStock);
 // DELETE a stock
 router.delete('/:id', stockController.deleteStock);
 
+// POST set max value for a stock
+router.post('/:id/max-value', stockController.setMaxValue);
+
+// POST manually set current price for a stock
+router.post('/:id/set-price', stockController.setCurrentPrice);
+
 module.exports = router;

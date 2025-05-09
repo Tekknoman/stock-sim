@@ -7,6 +7,7 @@ export interface Stock {
     base_value: number;
     current_price: number;
     buff_value: number;
+    max_value: number | null;
     created_at: string;
 }
 
@@ -72,4 +73,6 @@ export interface AppSettings {
     demand_impact_weight: string;
     random_event_chance: string;
     random_event_impact: string;
+    volume_decay_rate: string;
+    volume_decay_threshold: string;
 }

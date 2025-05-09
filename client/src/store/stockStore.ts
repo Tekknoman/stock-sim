@@ -28,6 +28,8 @@ interface StockState {
     updateStock: (id: number, stock: Partial<Stock>) => Promise<void>;
     deleteStock: (id: number) => Promise<void>;
     applyStockEvent: (id: number, value: number, message?: string) => Promise<void>;
+    setStockMaxValue: (id: number, maxValue: number) => Promise<void>;
+    setStockPrice: (id: number, price: number) => Promise<void>;
     trendingStocks: () => Stock[];
     topGainers: () => Stock[];
     topLosers: () => Stock[];
@@ -416,6 +418,30 @@ const useStockStore = create<StockState>((set, get) => ({
             await api.applyStockEvent(id, value, message);
         } catch (error) {
             console.error('Error applying stock event:', error);
+        }
+    },
+
+    setStockMaxValue: async (id: number, maxValue: number): Promise<void> => {
+        set({ loading: true, error: null });
+        try {
+            await api.setStockMaxValue(id, maxValue);
+            await get().fetchStocks(); // Refresh stocks after updating
+            set({ loading: false });
+        } catch (error) {
+            console.error('Error setting stock max value:', error);
+            set({ error: 'Failed to set stock max value', loading: false });
+        }
+    },
+
+    setStockPrice: async (id: number, price: number): Promise<void> => {
+        set({ loading: true, error: null });
+        try {
+            await api.setStockPrice(id, price);
+            await get().fetchStocks(); // Refresh stocks after updating
+            set({ loading: false });
+        } catch (error) {
+            console.error('Error setting stock price:', error);
+            set({ error: 'Failed to set stock price', loading: false });
         }
     },
 

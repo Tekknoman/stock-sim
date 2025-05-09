@@ -132,3 +132,76 @@ exports.getStockLeaderboard = (req, res) => {
         res.status(500).json({ error: 'Failed to get stock leaderboard' });
     }
 };
+
+// Set max value for a stock
+exports.setMaxValue = (req, res) => {
+    try {
+        const { id } = req.params;
+        const { maxValue } = req.body;
+
+        // Validate input
+        if (maxValue === undefined) {
+            return res.status(400).json({ error: 'Max value is required' });
+        }
+
+        // Validate as a number and ensure it's positive
+        const parsedMaxValue = parseFloat(maxValue);
+        if (isNaN(parsedMaxValue) || parsedMaxValue <= 0) {
+            return res.status(400).json({ error: 'Max value must be a positive number' });
+        }
+
+        // Get the stock
+        const stock = Stock.getById(id);
+        if (!stock) {
+            return res.status(404).json({ error: 'Stock not found' });
+        }
+
+        // Update the max value
+        Stock.update(id, { ...stock, max_value: parsedMaxValue });
+
+        res.json({
+            message: `Max value for ${stock.name} set to $${parsedMaxValue.toFixed(2)}`,
+            stock: Stock.getById(id)
+        });
+    } catch (error) {
+        console.error('Error setting max value:', error);
+        res.status(500).json({ error: 'Failed to set max value' });
+    }
+};
+
+// Manually set current price for a stock
+exports.setCurrentPrice = (req, res) => {
+    try {
+        const { id } = req.params;
+        const { price } = req.body;
+
+        // Validate input
+        if (price === undefined) {
+            return res.status(400).json({ error: 'Price is required' });
+        }
+
+        // Get the stock
+        const stock = Stock.getById(id);
+        if (!stock) {
+            return res.status(404).json({ error: 'Stock not found' });
+        }
+
+        // Update the price
+        try {
+            Stock.setPrice(id, price);
+        } catch (error) {
+            return res.status(400).json({ error: error.message });
+        }
+
+        // Get the updated stock
+        const updatedStock = Stock.getById(id);
+
+        res.json({
+            message: `Price for ${stock.name} manually set to $${updatedStock.current_price.toFixed(2)}`,
+            stock: updatedStock
+        });
+    } catch (error) {
+        console.error('Error setting price:', error);
+        res.status(500).json({ error: 'Failed to set price' });
+    }
+};

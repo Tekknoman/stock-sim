@@ -56,6 +56,9 @@ exports.createPosition = (req, res) => {
             open_price: stock.current_price
         });
 
+        // Record this trade in the stock's activity
+        Stock.recordTrade(stock_id, amount);
+
         // Get the complete position object with all details
         const position = Position.getById(id);
 
@@ -102,8 +105,12 @@ exports.closePosition = (req, res) => {
 
         // Store the stock_id before closing for the WebSocket event
         const stockId = position.stock_id;
+        const amount = position.amount;
 
         Position.close(id, stock.current_price);
+
+        // Record this trade in the stock's activity
+        Stock.recordTrade(stockId, amount);
 
         // Get updated position to return
         const updatedPosition = Position.getById(id);

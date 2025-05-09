@@ -28,7 +28,7 @@ const Stock: React.FC<StockViewProps> = ({ stockId, onClose }) => {
   const { status: simulationStatus } = useSimulationStore();
   const stock = stocks.find((s) => s.id === stockId);
 
-  const [timeSpan, setTimeSpan] = useState<TimeSpan>("1h");
+  const [timeSpan, setTimeSpan] = useState<TimeSpan>("15m");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [currentDomain, setCurrentDomain] = useState<string[]>([
